@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wedge — Trivia Night</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* category colors — the six are the stars of the palette */
+    --geo:#2F73C9;      /* Geography      — blue   */
+    --ent:#D94E8A;      /* Entertainment  — pink   */
+    --his:#E8B11F;      /* History        — yellow */
+    --art:#8254C0;      /* Art & Lit      — purple */
+    --sci:#2EA15C;      /* Science        — green  */
+    --spo:#E2772E;      /* Sports         — orange */
+
+    /* warm "felt table under a lamp" neutrals */
+    --bg:#15110D;
+    --panel:#1E1914;
+    --panel-2:#241E18;
+    --line:#3B332A;
+    --line-soft:#2B251E;
+    --ink:#F0E8D8;
+    --muted:#A99B83;
+    --muted-2:#766c5c;
+    --brass:#C9A35B;
+
+    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:64px;
+    --radius:14px;
+    --maxw:1080px;
+    --shadow:0 18px 48px -24px rgba(0,0,0,.8);
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:'Inter',system-ui,sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(1200px 700px at 50% -8%, #221b14 0%, rgba(34,27,20,0) 60%),
+      radial-gradient(900px 900px at 100% 120%, #1b1610 0%, rgba(27,22,16,0) 55%),
+      var(--bg);
+    min-height:100%;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    padding:var(--s5) var(--s4) var(--s8);
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto}
+
+  /* ---------- masthead ---------- */
+  .masthead{
+    display:flex;align-items:baseline;justify-content:space-between;
+    gap:var(--s4);flex-wrap:wrap;
+    padding-bottom:var(--s4);margin-bottom:var(--s6);
+    border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex;align-items:center;gap:var(--s4)}
+  .brand .logo{width:38px;height:38px;flex:none}
+  .brand h1{
+    font-family:'Fraunces',serif;font-weight:600;font-size:clamp(26px,4vw,38px);
+    letter-spacing:-.01em;line-height:1;
+  }
+  .brand .tag{
+    display:block;font-family:'JetBrains Mono',monospace;font-size:11px;
+    letter-spacing:.18em;text-transform:uppercase;color:var(--muted-2);margin-top:6px;
+  }
+  .difficulty{
+    font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);
+    border:1px solid var(--line);border-radius:999px;padding:7px 13px;white-space:nowrap;
+  }
+  .difficulty b{color:var(--brass);font-weight:700}
+
+  /* ---------- generic ---------- */
+  .screen{display:none}
+  .screen.active{display:block;animation:rise .4s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  .btn{
+    font-weight:600;font-size:15px;border-radius:10px;padding:13px 22px;
+    background:var(--ink);color:#1a140d;transition:transform .12s ease,box-shadow .12s ease,background .12s ease;
+  }
+  .btn:hover{transform:translateY(-2px);box-shadow:0 10px 22px -12px rgba(240,232,216,.5)}
+  .btn:active{transform:translateY(0)}
+  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .btn.ghost:hover{border-color:var(--brass);box-shadow:none}
+  .btn:focus-visible{outline:2px solid var(--brass);outline-offset:3px}
+
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--muted-2);margin-bottom:var(--s3);
+  }
+
+  /* ---------- setup ---------- */
+  .setup-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:var(--s7);align-items:start}
+  .setup-lead h2{font-family:'Fraunces',serif;font-weight:600;font-size:clamp(28px,4.5vw,46px);line-height:1.05;letter-spacing:-.02em;margin-bottom:var(--s4)}
+  .setup-lead p{color:var(--muted);max-width:42ch;margin-bottom:var(--s5)}
+  .rules{list-style:none;display:grid;gap:var(--s3)}
+  .rules li{display:flex;gap:var(--s3);color:var(--muted);font-size:14px}
+  .rules .n{font-family:'JetBrains Mono',monospace;color:var(--brass);font-weight:700;flex:none}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:var(--s6);box-shadow:var(--shadow)}
+  .field{margin-bottom:var(--s5)}
+  .field > label{display:block;font-size:13px;color:var(--muted);margin-bottom:var(--s3);font-weight:500}
+  .stepper{display:flex;align-items:center;gap:var(--s4)}
+  .stepper button{
+    width:44px;height:44px;border-radius:10px;border:1px solid var(--line);
+    font-size:22px;line-height:1;color:var(--ink);background:var(--panel-2);transition:.12s;
+  }
+  .stepper button:hover{border-color:var(--brass);color:var(--brass)}
+  .stepper .count{font-family:'Fraunces',serif;font-size:30px;min-width:44px;text-align:center;font-weight:600}
+  .names{display:grid;gap:var(--s3)}
+  .name-row{display:flex;align-items:center;gap:var(--s3)}
+  .seat{
+    width:34px;height:34px;flex:none;border-radius:50%;border:1px solid var(--brass);
+    display:grid;place-items:center;font-family:'JetBrains Mono',monospace;font-weight:700;
+    font-size:14px;color:var(--brass);background:radial-gradient(circle at 35% 30%, #2c241a, #1a140e);
+  }
+  input[type=text]{
+    flex:1;font-family:inherit;font-size:15px;color:var(--ink);background:var(--panel-2);
+    border:1px solid var(--line);border-radius:9px;padding:11px 13px;transition:.12s;width:100%;
+  }
+  input[type=text]:focus{outline:none;border-color:var(--brass)}
+  input[type=text]::placeholder{color:var(--muted-2)}
+
+  /* ---------- game ---------- */
+  .game-top{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);flex-wrap:wrap;margin-bottom:var(--s5)}
+  .turn{display:flex;align-items:center;gap:var(--s4)}
+  .turn .pie-wrap{width:54px;height:54px;flex:none}
+  .turn .who .lbl{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-2)}
+  .turn .who .nm{font-family:'Fraunces',serif;font-size:24px;font-weight:600;line-height:1.1}
+  .progress-note{font-size:13px;color:var(--muted)}
+  .progress-note b{color:var(--ink);font-family:'JetBrains Mono',monospace}
+
+  .board{display:grid;grid-template-columns:1fr 300px;gap:var(--s6);align-items:start}
+
+  /* dice roller */
+  .roller{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:var(--s6) var(--s5);text-align:center;box-shadow:var(--shadow)}
+  .roll-prompt{font-family:'Fraunces',serif;font-size:clamp(19px,2.6vw,24px);font-weight:500;color:var(--ink);margin-bottom:var(--s6)}
+  .roll-prompt b{color:var(--brass)}
+  .dice-stage{perspective:760px;width:120px;height:120px;margin:0 auto var(--s6)}
+  .die{
+    width:90px;height:90px;margin:15px;position:relative;transform-style:preserve-3d;
+    transform:rotateX(-22deg) rotateY(22deg);
+    transition:transform 1.15s cubic-bezier(.2,.62,.2,1);
+  }
+  .die.idle{animation:bob 3.4s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:rotateX(-22deg) rotateY(18deg)}50%{transform:rotateX(-14deg) rotateY(30deg)}}
+  .face{
+    position:absolute;width:90px;height:90px;border-radius:15px;
+    display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:12px;
+    box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.22), inset 0 -7px 16px rgba(0,0,0,.28), inset 0 6px 12px rgba(255,255,255,.18);
+    backface-visibility:hidden;
+  }
+  .cell{display:grid;place-items:center}
+  .cell.pip::after{content:"";width:13px;height:13px;border-radius:50%;background:#15110d;box-shadow:inset 0 1.5px 1px rgba(255,255,255,.28)}
+  #rollBtn{min-width:190px}
+  .roll-result{margin-top:var(--s2);display:none}
+  .roll-result.show{display:block;animation:rise .35s ease both}
+  .r-line{display:flex;align-items:center;justify-content:center;gap:13px;margin-bottom:var(--s5);font-size:17px;color:var(--muted)}
+  .r-line b{color:var(--c);font-family:'Fraunces',serif;font-weight:600}
+  .r-num{width:42px;height:42px;border-radius:11px;background:var(--c);color:#15110d;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:21px;display:grid;place-items:center;flex:none}
+  .legend{display:grid;grid-template-columns:repeat(3,auto);gap:11px 20px;justify-content:center;margin-top:var(--s6);padding-top:var(--s5);border-top:1px solid var(--line-soft)}
+  .legend .lg{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+  .legend .lg .n{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--ink)}
+  .legend .lg .sw{width:11px;height:11px;border-radius:3px;flex:none}
+
+  /* question card */
+  .qcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+  .qcard .bar{height:7px;background:var(--c)}
+  .qcard .body{padding:var(--s6)}
+  .qcard .q-cat{display:flex;align-items:center;gap:10px;margin-bottom:var(--s4)}
+  .qcard .q-cat .swatch{width:13px;height:13px;border-radius:3px;background:var(--c)}
+  .qcard .q-cat span{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .qcard .q-text{font-family:'Fraunces',serif;font-size:clamp(22px,3.2vw,30px);font-weight:500;line-height:1.28;letter-spacing:-.01em}
+  .answer{margin-top:var(--s5);padding-top:var(--s5);border-top:1px dashed var(--line);display:none}
+  .answer.show{display:block;animation:rise .3s ease both}
+  .answer .a-lbl{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-2);margin-bottom:8px}
+  .answer .a-text{font-family:'Fraunces',serif;font-size:clamp(20px,2.6vw,26px);font-weight:600;color:var(--c)}
+  .qactions{display:flex;gap:var(--s3);margin-top:var(--s6);flex-wrap:wrap}
+  .btn.correct{background:var(--sci);color:#0c1f13}
+  .btn.miss{background:transparent;border:1px solid var(--line);color:var(--ink)}
+  .btn.miss:hover{border-color:var(--ent)}
+
+  .feedback{
+    margin-top:var(--s4);font-size:14px;color:var(--muted);min-height:20px;
+    font-family:'JetBrains Mono',monospace;letter-spacing:.01em;
+  }
+  .feedback b{color:var(--ink)}
+
+  /* scoreboard */
+  .scoreboard{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:var(--s5)}
+  .scoreboard h3{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted-2);margin-bottom:var(--s4)}
+  .team-row{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0;border-top:1px solid var(--line-soft)}
+  .team-row:first-of-type{border-top:none}
+  .team-row .pie-wrap{width:40px;height:40px;flex:none}
+  .team-row .meta{flex:1;min-width:0}
+  .team-row .meta .nm{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .team-row .meta .ct{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)}
+  .team-row.active{}
+  .team-row.active .nm{color:var(--brass)}
+  .team-row.active::before{content:"▸";color:var(--brass);margin-right:-6px;font-size:12px}
+
+  /* ---------- win ---------- */
+  .win{text-align:center;padding:var(--s7) var(--s4)}
+  .win .pie-wrap{width:150px;height:150px;margin:0 auto var(--s5);animation:pop .6s cubic-bezier(.2,.8,.2,1.2) both}
+  @keyframes pop{from{opacity:0;transform:scale(.6) rotate(-12deg)}to{opacity:1;transform:none}}
+  .win .eyebrow{justify-content:center}
+  .win h2{font-family:'Fraunces',serif;font-size:clamp(34px,6vw,60px);font-weight:600;letter-spacing:-.02em;margin-bottom:var(--s3)}
+  .win p{color:var(--muted);margin-bottom:var(--s6)}
+  .win .winner-name{color:var(--brass)}
+
+  #confetti{position:fixed;inset:0;pointer-events:none;z-index:50}
+
+  footer{margin-top:var(--s8);text-align:center;color:var(--muted-2);font-size:12px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em}
+
+  @media (max-width:860px){
+    .setup-grid{grid-template-columns:1fr;gap:var(--s6)}
+    .board{grid-template-columns:1fr}
+    .scoreboard{order:-1}
+  }
+  @media (max-width:520px){
+    .legend{grid-template-columns:repeat(2,auto)}
+    body{padding:var(--s4) var(--s3) var(--s7)}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 100 100" aria-hidden="true">
+        <g stroke="#15110d" stroke-width="3">
+          <path d="M50 50 L50 4 A46 46 0 0 1 89.8 27 Z" fill="#2F73C9"/>
+          <path d="M50 50 L89.8 27 A46 46 0 0 1 89.8 73 Z" fill="#D94E8A"/>
+          <path d="M50 50 L89.8 73 A46 46 0 0 1 50 96 Z" fill="#E8B11F"/>
+          <path d="M50 50 L50 96 A46 46 0 0 1 10.2 73 Z" fill="#8254C0"/>
+          <path d="M50 50 L10.2 73 A46 46 0 0 1 10.2 27 Z" fill="#2EA15C"/>
+          <path d="M50 50 L10.2 27 A46 46 0 0 1 50 4 Z" fill="#E2772E"/>
+        </g>
+        <circle cx="50" cy="50" r="9" fill="#15110d"/>
+      </svg>
+      <div>
+        <h1>Wedge</h1>
+        <span class="tag">Trivia Night · Six Wedges to Win</span>
+      </div>
+    </div>
+    <div class="difficulty">Difficulty <b>7.24</b> / 10</div>
+  </header>
+
+  <!-- ============ SETUP ============ -->
+  <section id="setup" class="screen active">
+    <div class="setup-grid">
+      <div class="setup-lead">
+        <p class="eyebrow">How it plays</p>
+        <h2>Six categories.<br>One filling pie.<br>First to a full circle wins.</h2>
+        <p>Pass-and-play with up to six teams. On your turn, pick a category, talk it out, then flip the answer and score yourselves on the honor system.</p>
+        <ul class="rules">
+          <li><span class="n">01</span><span>Choose a category and reveal the answer when your team has locked in a guess.</span></li>
+          <li><span class="n">02</span><span>Get it right and you claim that color's wedge — then go again.</span></li>
+          <li><span class="n">03</span><span>Miss it and the turn passes to the next team.</span></li>
+          <li><span class="n">04</span><span>Collect all six wedges to win the round.</span></li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <div class="field">
+          <label>How many teams?</label>
+          <div class="stepper">
+            <button id="minus" aria-label="Fewer teams">−</button>
+            <span class="count" id="teamCount">3</span>
+            <button id="plus" aria-label="More teams">+</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Name your teams</label>
+          <div class="names" id="names"></div>
+        </div>
+        <button class="btn" id="startBtn" style="width:100%">Start the round</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ GAME ============ -->
+  <section id="game" class="screen">
+    <div class="game-top">
+      <div class="turn">
+        <div class="pie-wrap" id="turnPie"></div>
+        <div class="who">
+          <div class="lbl">Now answering</div>
+          <div class="nm" id="turnName">Team 1</div>
+        </div>
+      </div>
+      <div class="progress-note">Wedges held: <b id="turnHeld">0 / 6</b></div>
+    </div>
+
+    <div class="board">
+      <div class="play-col">
+        <!-- dice roller -->
+        <div id="roller" class="roller">
+          <div class="roll-prompt" id="rollPrompt">Roll to draw a category</div>
+          <div class="dice-stage"><div class="die idle" id="die"></div></div>
+          <button class="btn" id="rollBtn">Roll the die</button>
+          <div class="roll-result" id="rollResult"></div>
+          <div class="legend" id="legend"></div>
+        </div>
+
+        <!-- question card -->
+        <div id="qcardWrap" style="display:none">
+          <div class="qcard" id="qcard">
+            <div class="bar" style="background:var(--c)"></div>
+            <div class="body">
+              <div class="q-cat"><span class="swatch"></span><span id="qCatName">Category</span></div>
+              <div class="q-text" id="qText">—</div>
+              <div class="answer" id="answer">
+                <div class="a-lbl">Answer</div>
+                <div class="a-text" id="aText">—</div>
+              </div>
+              <div class="qactions" id="qactions">
+                <button class="btn" id="revealBtn">Reveal answer</button>
+              </div>
+              <div class="feedback" id="feedback"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- scoreboard -->
+      <aside class="scoreboard">
+        <h3>Standings</h3>
+        <div id="standings"></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ WIN ============ -->
+  <section id="win" class="screen">
+    <div class="win">
+      <div class="pie-wrap" id="winPie"></div>
+      <p class="eyebrow">Round complete</p>
+      <h2><span class="winner-name" id="winName">Team 1</span> takes it</h2>
+      <p>A full pie — all six wedges. Nicely played.</p>
+      <button class="btn" id="againBtn">New round</button>
+    </div>
+  </section>
+
+  <footer>Wedge · a pass-and-play trivia game</footer>
+</div>
+<canvas id="confetti"></canvas>
+
+<script>
+/* ---------------- categories + question banks ---------------- */
+const CATEGORIES = [
+  {key:'geo', name:'Geography',          sub:'maps, borders, the wider world', color:'var(--geo)'},
+  {key:'ent', name:'Entertainment',      sub:'film, TV & music, 1995–now',     color:'var(--ent)'},
+  {key:'his', name:'History',            sub:'empires, wars & turning points', color:'var(--his)'},
+  {key:'art', name:'Art & Literature',   sub:'paint, prose & poetry',          color:'var(--art)'},
+  {key:'sci', name:'Science & Nature',   sub:'the lab and the living world',   color:'var(--sci)'},
+  {key:'spo', name:'Sports & Leisure',   sub:'games, fields & pastimes',       color:'var(--spo)'},
+];
+
+const QUESTIONS = {
+  geo:[
+    {q:"What is the only country that borders both the Caspian Sea and the Persian Gulf?", a:"Iran"},
+    {q:"Lake Titicaca, the highest navigable lake, straddles the border of which two countries?", a:"Peru and Bolivia"},
+    {q:"Which present-day African nation was historically known as Abyssinia?", a:"Ethiopia"},
+    {q:"Which is the largest country lying entirely within the Southern Hemisphere?", a:"Australia"},
+    {q:"The Atacama, one of the driest deserts on Earth, lies mainly in which country?", a:"Chile"},
+    {q:"The Bosphorus connects the Black Sea to which other body of water?", a:"The Sea of Marmara"},
+    {q:"What is the smallest sovereign country in South America by area?", a:"Suriname"},
+    {q:"Which is the only U.S. state that borders exactly one other state?", a:"Maine (borders only New Hampshire)"},
+    {q:"The Strait of Gibraltar separates Spain from which country?", a:"Morocco"},
+    {q:"What is the capital city of New Zealand?", a:"Wellington"},
+    {q:"The Khyber Pass links Pakistan with which neighbouring country?", a:"Afghanistan"},
+    {q:"Lake Baikal, the world's deepest lake, lies within which country?", a:"Russia"},
+    {q:"Which two countries share the longest international land border?", a:"Canada and the United States"},
+    {q:"Which river flows through the city of Baghdad?", a:"The Tigris"},
+    {q:"What is the capital of Turkey?", a:"Ankara"},
+    {q:"What is the capital of Brazil?", a:"Brasília"},
+    {q:"What is the capital of Kazakhstan?", a:"Astana"},
+    {q:"What is the largest inland body of water on Earth?", a:"The Caspian Sea"},
+    {q:"Mount Kilimanjaro, Africa's highest peak, lies in which country?", a:"Tanzania"},
+    {q:"The Danube, Europe's second-longest river, empties into which sea?", a:"The Black Sea"},
+    {q:"Which country is estimated to contain the most natural lakes?", a:"Canada"},
+    {q:"What is the largest country in Africa by area?", a:"Algeria"},
+    {q:"Which country is entirely surrounded by South Africa?", a:"Lesotho"},
+    {q:"Which mountain range is traditionally regarded as the boundary between Europe and Asia?", a:"The Ural Mountains"},
+    {q:"Angel Falls, the world's tallest waterfall, is located in which country?", a:"Venezuela"},
+    {q:"The Yucatán Peninsula lies mostly within which country?", a:"Mexico"},
+    {q:"Which country has the longest coastline in the world?", a:"Canada"},
+    {q:"The Strait of Malacca runs between the Malay Peninsula and which large island?", a:"Sumatra"},
+    {q:"Which European capital sits on the banks of the Tagus River?", a:"Lisbon"},
+    {q:"The Great Barrier Reef lies off the coast of which Australian state?", a:"Queensland"},
+    {q:"The Matterhorn straddles the border of Switzerland and which country?", a:"Italy"},
+    {q:"Which river forms much of the border between the United States and Mexico?", a:"The Rio Grande"},
+    {q:"Vientiane is the capital of which Southeast Asian country?", a:"Laos"},
+    {q:"Which desert spans much of southern Mongolia and northern China?", a:"The Gobi Desert"},
+    {q:"The Cape of Good Hope lies near which major South African city?", a:"Cape Town"},
+    {q:"Which sea separates the Arabian Peninsula from north-eastern Africa?", a:"The Red Sea"},
+  ],
+  ent:[
+    {q:"Radiohead released which acclaimed album in 1997?", a:"OK Computer"},
+    {q:"Daniel Day-Lewis won a Best Actor Oscar for which 2007 oil-prospecting drama?", a:"There Will Be Blood"},
+    {q:"Kendrick Lamar released which landmark album, widely hailed as a classic, in 2015?", a:"To Pimp a Butterfly"},
+    {q:"Which film won Best Picture at the 2017 ceremony after the envelope mix-up?", a:"Moonlight"},
+    {q:"The series 'Breaking Bad' is set in which U.S. city?", a:"Albuquerque, New Mexico"},
+    {q:"Which director won the Best Director Oscar for 2013's 'Gravity'?", a:"Alfonso Cuarón"},
+    {q:"Lauryn Hill's only solo studio album (1998) won Album of the Year — name it.", a:"The Miseducation of Lauryn Hill"},
+    {q:"Which 2003 film won 11 Academy Awards, tying the all-time record?", a:"The Lord of the Rings: The Return of the King"},
+    {q:"The ad agency in 'Mad Men' sits on which New York avenue, synonymous with advertising?", a:"Madison Avenue"},
+    {q:"Which actress won Best Actress for both 'Boys Don't Cry' and 'Million Dollar Baby'?", a:"Hilary Swank"},
+    {q:"Amy Winehouse's Grammy-sweeping 2006 album was titled what?", a:"Back to Black"},
+    {q:"The HBO crime drama 'The Wire' is set in which American city?", a:"Baltimore"},
+    {q:"Which 1999 film introduced the 'bullet time' visual effect?", a:"The Matrix"},
+    {q:"Which animated series, debuting in 1997, is set in a small Colorado mountain town?", a:"South Park"},
+    {q:"Which 2019 film became the first non-English-language work to win the Best Picture Oscar?", a:"Parasite"},
+    {q:"Which sibling filmmakers directed 'Fargo' and 'No Country for Old Men'?", a:"The Coen Brothers"},
+    {q:"Beyoncé's 2003 solo debut studio album was titled what?", a:"Dangerously in Love"},
+    {q:"Which sitcom centres on the fictional paper company Dunder Mifflin?", a:"The Office"},
+    {q:"Which composer scored Christopher Nolan's 'Inception' and 'Interstellar'?", a:"Hans Zimmer"},
+    {q:"Which 2009 James Cameron film became, on release, the highest-grossing film ever?", a:"Avatar"},
+    {q:"Which Netflix series, set in 1980s Indiana, features a girl known only as Eleven?", a:"Stranger Things"},
+    {q:"Adele's record-breaking second album, released in 2011, was titled what?", a:"21"},
+    {q:"Which 1997 James Cameron epic won 11 Oscars at the 1998 ceremony?", a:"Titanic"},
+    {q:"OutKast's 2003 double album, home to 'Hey Ya!', was titled what?", a:"Speakerboxxx/The Love Below"},
+    {q:"Which 1999 Pixar release was the studio's first feature-length sequel?", a:"Toy Story 2"},
+    {q:"The Strokes' influential 2001 debut album was titled what?", a:"Is This It"},
+    {q:"Which director made 'Pan's Labyrinth' and 'The Shape of Water'?", a:"Guillermo del Toro"},
+    {q:"Which 2016 Disney film follows a Polynesian girl who sails with the demigod Maui?", a:"Moana"},
+    {q:"Daft Punk's 2013 album featuring 'Get Lucky' was titled what?", a:"Random Access Memories"},
+    {q:"Which 2016 drama follows the Pearson family across multiple timelines?", a:"This Is Us"},
+    {q:"Which actress won the Best Actress Oscar for 'La La Land'?", a:"Emma Stone"},
+    {q:"Frank Ocean's acclaimed 2016 album was titled what?", a:"Blonde"},
+    {q:"The 2001 film 'Amélie' is set in which city?", a:"Paris"},
+    {q:"Which band released the rock opera 'American Idiot' in 2004?", a:"Green Day"},
+    {q:"Which 2018 Marvel film is set largely in the fictional nation of Wakanda?", a:"Black Panther"},
+    {q:"Which Hayao Miyazaki film won the Best Animated Feature Oscar in 2003?", a:"Spirited Away"},
+  ],
+  his:[
+    {q:"Who became the first emperor of a unified China?", a:"Qin Shi Huang"},
+    {q:"The ancient city of Carthage stood near which modern capital?", a:"Tunis, Tunisia"},
+    {q:"The 1648 Peace of Westphalia ended which long European conflict?", a:"The Thirty Years' War"},
+    {q:"The Meiji Restoration of 1868 rapidly modernised which country?", a:"Japan"},
+    {q:"After Waterloo, Napoleon was exiled to — and died on — which remote island?", a:"Saint Helena"},
+    {q:"The 1494 Treaty of Tordesillas divided newly explored lands between which two powers?", a:"Spain and Portugal"},
+    {q:"Who led the Haitian Revolution against French colonial rule?", a:"Toussaint Louverture"},
+    {q:"The 1884–85 Berlin Conference set rules for European colonisation of which continent?", a:"Africa"},
+    {q:"Which empire reached its golden age under Suleiman the Magnificent?", a:"The Ottoman Empire"},
+    {q:"Which Carthaginian general famously crossed the Alps with war elephants?", a:"Hannibal"},
+    {q:"In which year did the Bolsheviks seize power in Russia?", a:"1917"},
+    {q:"The Rosetta Stone was crucial to deciphering which writing system?", a:"Egyptian hieroglyphs"},
+    {q:"Whose 1914 assassination in Sarajevo helped ignite World War I?", a:"Archduke Franz Ferdinand"},
+    {q:"The Hundred Years' War was fought chiefly between England and which kingdom?", a:"France"},
+    {q:"Which city fell to the Ottomans in 1453, ending the Byzantine Empire?", a:"Constantinople"},
+    {q:"Cyrus the Great founded which vast ancient empire?", a:"The Achaemenid (Persian) Empire"},
+    {q:"Which 1215 charter limited the powers of the English monarch?", a:"Magna Carta"},
+    {q:"Which 14th-century pandemic killed roughly a third of Europe's population?", a:"The Black Death"},
+    {q:"Which famously wealthy 14th-century ruler led the Mali Empire?", a:"Mansa Musa"},
+    {q:"The 1492 fall of Granada completed which centuries-long campaign in Spain?", a:"The Reconquista"},
+    {q:"In which year did the Norman Conquest of England take place?", a:"1066"},
+    {q:"Colonists dumped tea into which harbour in 1773 to protest British taxation?", a:"Boston Harbour"},
+    {q:"Who is celebrated as the liberator of much of South America from Spanish rule?", a:"Simón Bolívar"},
+    {q:"Which Chinese dynasty built most of the Great Wall in its present form?", a:"The Ming Dynasty"},
+    {q:"Which empress greatly expanded Russia during her late-18th-century reign?", a:"Catherine the Great"},
+    {q:"Emperor Justinian built which great domed church in Constantinople?", a:"The Hagia Sophia"},
+    {q:"Which fleet did England famously defeat in 1588?", a:"The Spanish Armada"},
+    {q:"Who was the third and greatest emperor of India's Mughal dynasty?", a:"Akbar"},
+    {q:"In 1803 the United States bought a huge territory from France in which deal?", a:"The Louisiana Purchase"},
+    {q:"Genghis Khan's grandson who founded China's Yuan Dynasty was whom?", a:"Kublai Khan"},
+    {q:"One of the earliest written law codes was issued by which Babylonian king?", a:"Hammurabi"},
+    {q:"Who was the first European to reach India by sea, arriving in 1498?", a:"Vasco da Gama"},
+    {q:"Which city-state ultimately defeated Athens in the Peloponnesian War?", a:"Sparta"},
+    {q:"Who developed Europe's movable-type printing press around 1450?", a:"Johannes Gutenberg"},
+    {q:"Florence Nightingale rose to fame nursing soldiers in which 1850s war?", a:"The Crimean War"},
+    {q:"The ancient Library of Alexandria was located in which country?", a:"Egypt"},
+  ],
+  art:[
+    {q:"In which Shakespeare play do the characters Rosencrantz and Guildenstern appear?", a:"Hamlet"},
+    {q:"Which Surrealist painted 'The Persistence of Memory', with its melting clocks?", a:"Salvador Dalí"},
+    {q:"Who sculpted the famous bronze figure known as 'The Thinker'?", a:"Auguste Rodin"},
+    {q:"Which Colombian author wrote 'Love in the Time of Cholera'?", a:"Gabriel García Márquez"},
+    {q:"Which 1922 modernist poem opens with 'April is the cruellest month'?", a:"The Waste Land (T. S. Eliot)"},
+    {q:"Which Norwegian artist painted 'The Scream'?", a:"Edvard Munch"},
+    {q:"Who wrote the novel 'Crime and Punishment'?", a:"Fyodor Dostoevsky"},
+    {q:"The Harlem Renaissance flourished primarily during which decade?", a:"The 1920s"},
+    {q:"Which Dutch master painted 'Girl with a Pearl Earring'?", a:"Johannes Vermeer"},
+    {q:"Which Jane Austen novel begins 'It is a truth universally acknowledged...'?", a:"Pride and Prejudice"},
+    {q:"Which Italian poet wrote 'The Divine Comedy'?", a:"Dante Alighieri"},
+    {q:"The fragmented-form movement pioneered by Braque and Picasso is called what?", a:"Cubism"},
+    {q:"Who wrote the dystopian novel 'Brave New World'?", a:"Aldous Huxley"},
+    {q:"Gustav Klimt's celebrated gold-leaf painting of an embracing couple is titled what?", a:"The Kiss"},
+    {q:"Which artist painted 'Guernica', depicting the bombing of a Spanish town?", a:"Pablo Picasso"},
+    {q:"Which Russian author wrote 'Anna Karenina'?", a:"Leo Tolstoy"},
+    {q:"Which Mexican painter is renowned for her vivid self-portraits?", a:"Frida Kahlo"},
+    {q:"Which American author wrote the novel 'Moby-Dick'?", a:"Herman Melville"},
+    {q:"Which Renaissance artist painted 'The Birth of Venus'?", a:"Sandro Botticelli"},
+    {q:"Which Irish author wrote the modernist novel 'Ulysses' (1922)?", a:"James Joyce"},
+    {q:"Which Impressionist is best known for his 'Water Lilies' series?", a:"Claude Monet"},
+    {q:"Who wrote the gothic novel 'Frankenstein'?", a:"Mary Shelley"},
+    {q:"Which American artist pioneered the 'drip' technique of Abstract Expressionism?", a:"Jackson Pollock"},
+    {q:"Virgil wrote which Latin epic about the legendary founding of Rome?", a:"The Aeneid"},
+    {q:"Which American painter is famous for enlarged flowers and Southwest landscapes?", a:"Georgia O'Keeffe"},
+    {q:"Which Brontë sister wrote the novel 'Jane Eyre'?", a:"Charlotte Brontë"},
+    {q:"Which French artist was a leader of the Fauvism movement?", a:"Henri Matisse"},
+    {q:"Who wrote the novel 'The Picture of Dorian Gray'?", a:"Oscar Wilde"},
+    {q:"Which Dutch master painted the militia group portrait 'The Night Watch'?", a:"Rembrandt"},
+    {q:"Which Nobel laureate wrote the novel 'Beloved'?", a:"Toni Morrison"},
+    {q:"Which German writer authored the two-part drama 'Faust'?", a:"Johann Wolfgang von Goethe"},
+    {q:"Which Pop artist created the 'Campbell's Soup Cans'?", a:"Andy Warhol"},
+    {q:"Which reclusive 19th-century American poet wrote nearly 1,800 short poems?", a:"Emily Dickinson"},
+    {q:"Which Renaissance master painted the fresco 'The School of Athens'?", a:"Raphael"},
+    {q:"Who wrote the novella 'The Metamorphosis'?", a:"Franz Kafka"},
+    {q:"Which English Romantic painter is celebrated for his luminous seascapes?", a:"J. M. W. Turner"},
+  ],
+  sci:[
+    {q:"What name is given to the boundary around a black hole from which nothing can escape?", a:"The event horizon"},
+    {q:"Besides adenine, guanine and cytosine, name the fourth base found in DNA.", a:"Thymine"},
+    {q:"Which planet is the hottest in our solar system?", a:"Venus"},
+    {q:"What is the most abundant gas in Earth's atmosphere?", a:"Nitrogen"},
+    {q:"Which subatomic particle did J. J. Thomson discover in 1897?", a:"The electron"},
+    {q:"What is the term for a substance that speeds up a reaction without being consumed?", a:"A catalyst"},
+    {q:"Who formulated the three laws of planetary motion?", a:"Johannes Kepler"},
+    {q:"What is the SI unit of electrical resistance?", a:"The ohm"},
+    {q:"In which organelle does protein synthesis take place in a cell?", a:"The ribosome"},
+    {q:"The Doppler effect describes a change in a wave's apparent what, relative to an observer?", a:"Frequency"},
+    {q:"Which chemical element is the most electronegative?", a:"Fluorine"},
+    {q:"Carbon-14 dating relies on the predictable rate of which process?", a:"Radioactive decay"},
+    {q:"Which gas law states that pressure and volume are inversely proportional at constant temperature?", a:"Boyle's Law"},
+    {q:"Which blood type is considered the universal donor?", a:"O negative"},
+    {q:"Which chemical element has the highest melting point?", a:"Tungsten"},
+    {q:"Which scientist discovered the elements polonium and radium?", a:"Marie Curie"},
+    {q:"Which is the only metal that is liquid at room temperature?", a:"Mercury"},
+    {q:"In which organelle does most cellular respiration (ATP production) occur?", a:"The mitochondrion"},
+    {q:"What is the chemical name for common table salt?", a:"Sodium chloride"},
+    {q:"Which organ produces the hormone insulin?", a:"The pancreas"},
+    {q:"What is the SI unit of force?", a:"The newton"},
+    {q:"Which gas is released as a by-product of photosynthesis?", a:"Oxygen"},
+    {q:"Approximately how fast does light travel in a vacuum?", a:"About 300,000 km/s (3×10⁸ m/s)"},
+    {q:"Which element is the second most abundant in the universe after hydrogen?", a:"Helium"},
+    {q:"What is the largest internal organ of the human body?", a:"The liver"},
+    {q:"Which scale is traditionally used to express the magnitude of earthquakes?", a:"The Richter scale"},
+    {q:"What is the temperature of absolute zero, in degrees Celsius?", a:"About -273.15 °C"},
+    {q:"What is the longest bone in the human body?", a:"The femur"},
+    {q:"Plasma is commonly described as which state of matter?", a:"The fourth state of matter"},
+    {q:"An element's atomic number equals its number of what?", a:"Protons"},
+    {q:"Alexander Fleming discovered which antibiotic in 1928?", a:"Penicillin"},
+    {q:"Which element forms the chemical backbone of all known organic life?", a:"Carbon"},
+    {q:"Which region of the brain coordinates balance and fine movement?", a:"The cerebellum"},
+    {q:"What is the term for the bending of light as it passes between two media?", a:"Refraction"},
+    {q:"What is the SI base unit for the amount of a substance?", a:"The mole"},
+    {q:"In thermodynamics, which quantity is a measure of disorder?", a:"Entropy"},
+  ],
+  spo:[
+    {q:"What is the maximum break achievable in a single frame of snooker?", a:"147"},
+    {q:"In cricket, taking three wickets with three consecutive deliveries is called what?", a:"A hat-trick"},
+    {q:"Which country has won the most FIFA World Cup titles?", a:"Brazil"},
+    {q:"In which city were the first modern Olympic Games held in 1896?", a:"Athens"},
+    {q:"A perfect game scoring 300 is achieved in which sport?", a:"Ten-pin bowling"},
+    {q:"What is the term for finishing a single golf hole three strokes under par?", a:"An albatross (double eagle)"},
+    {q:"Which country has hosted the most Summer Olympic Games?", a:"The United States"},
+    {q:"Which driver holds the record for the most career Formula 1 race wins?", a:"Lewis Hamilton"},
+    {q:"The Davis Cup is a premier international team competition in which sport?", a:"Tennis"},
+    {q:"How many players are on the field per team in rugby union?", a:"15"},
+    {q:"The Green Jacket is awarded to the winner of which golf major?", a:"The Masters"},
+    {q:"Which tennis Grand Slam tournament is played on clay courts?", a:"The French Open (Roland Garros)"},
+    {q:"What is the standard distance of a marathon?", a:"42.195 km (26.2 miles)"},
+    {q:"Which boxer lit the Olympic cauldron at the 1996 Atlanta Games?", a:"Muhammad Ali"},
+    {q:"Which is the oldest of the four tennis Grand Slam tournaments, played on grass?", a:"Wimbledon"},
+    {q:"In the Tour de France, the overall race leader wears a jersey of which colour?", a:"Yellow"},
+    {q:"The Ryder Cup is contested between Europe and the USA in which sport?", a:"Golf"},
+    {q:"On which gymnastics apparatus do athletes perform continuous circular leg swings?", a:"The pommel horse"},
+    {q:"Which athletics competition consists of ten separate track-and-field events?", a:"The decathlon"},
+    {q:"In cricket, what is a batsman's individual score of 100 runs called?", a:"A century"},
+    {q:"Which Brazilian footballer won three World Cups as a player?", a:"Pelé"},
+    {q:"What is the length, in metres, of a standard Olympic swimming pool?", a:"50 metres"},
+    {q:"What is the French term for the main group of riders in a cycling race?", a:"The peloton"},
+    {q:"Which Japanese wrestling sport is contested in a ring called a dohyō?", a:"Sumo"},
+    {q:"What is the term for a score of two strokes under par on a single golf hole?", a:"An eagle"},
+    {q:"Which trophy is awarded annually to the best player in U.S. college football?", a:"The Heisman Trophy"},
+    {q:"The épée, foil and sabre are the three weapons used in which sport?", a:"Fencing"},
+    {q:"What is the name for the method of restarting play with interlocked forwards in rugby?", a:"The scrum"},
+    {q:"Besides the 100 m, in which other sprint does Usain Bolt hold the world record?", a:"The 200 m"},
+    {q:"Which golf club is typically used to hit the longest shots off the tee?", a:"The driver"},
+    {q:"Which endurance event combines swimming, cycling and running?", a:"The triathlon"},
+    {q:"The America's Cup is the premier international trophy in which sport?", a:"Sailing (yacht racing)"},
+    {q:"The famous Maracanã stadium is located in which city?", a:"Rio de Janeiro"},
+    {q:"Which racket sport is played by hitting a shuttlecock over a high net?", a:"Badminton"},
+    {q:"The Ashes is a long-running Test cricket series between England and which country?", a:"Australia"},
+    {q:"Which Winter Olympic sport involves sliding stones toward a target on ice while sweeping?", a:"Curling"},
+  ],
+};
+
+/* ---------------- pie rendering ---------------- */
+function polar(cx,cy,r,deg){const rad=(deg-90)*Math.PI/180;return [cx+r*Math.cos(rad), cy+r*Math.sin(rad)];}
+function wedgePath(cx,cy,r,a0,a1){
+  const [x0,y0]=polar(cx,cy,r,a0), [x1,y1]=polar(cx,cy,r,a1);
+  const large=(a1-a0)>180?1:0;
+  return `M ${cx} ${cy} L ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z`;
+}
+function pieSVG(earned){
+  const size=100, r=size/2-3, cx=size/2, cy=size/2;
+  let p='';
+  CATEGORIES.forEach((c,i)=>{
+    const a0=i*60, a1=(i+1)*60, has=earned.has(c.key);
+    p+=`<path d="${wedgePath(cx,cy,r,a0,a1)}" fill="${has?c.color:'transparent'}" stroke="var(--line)" stroke-width="1.5" opacity="${has?1:0.3}"/>`;
+  });
+  return `<svg viewBox="0 0 ${size} ${size}" width="100%" height="100%" aria-hidden="true">${p}<circle cx="${cx}" cy="${cy}" r="7" fill="var(--bg)" stroke="var(--line)" stroke-width="1.5"/></svg>`;
+}
+
+/* ---------------- state ---------------- */
+let numTeams=3, teamNames=[], teams=[], current=0;
+let pools={}, active=null, revealed=false, locked=false;
+let dieSpin=0, rolling=false;
+
+const $=id=>document.getElementById(id);
+
+/* die face n (1-6) maps to CATEGORIES[n-1]; rotation that brings each face forward */
+const FACE_ROT={1:{x:0,y:0},2:{x:0,y:-90},3:{x:-90,y:0},4:{x:90,y:0},5:{x:0,y:90},6:{x:0,y:-180}};
+const PIPS={1:[5],2:[1,9],3:[1,5,9],4:[1,3,7,9],5:[1,3,5,7,9],6:[1,4,7,3,6,9]};
+/* placement of each face on the cube (must match FACE_ROT) */
+const FACE_PLACE=[
+  'translateZ(45px)',                 // 1 front
+  'rotateY(90deg) translateZ(45px)',  // 2 right
+  'rotateX(90deg) translateZ(45px)',  // 3 top
+  'rotateX(-90deg) translateZ(45px)', // 4 bottom
+  'rotateY(-90deg) translateZ(45px)', // 5 left
+  'rotateY(180deg) translateZ(45px)', // 6 back
+];
+
+function buildDie(){
+  const die=$('die'); die.innerHTML='';
+  FACE_PLACE.forEach((t,i)=>{
+    const n=i+1, face=document.createElement('div');
+    face.className='face';
+    face.style.transform=t;
+    face.style.background=CATEGORIES[i].color;
+    for(let cell=1;cell<=9;cell++){
+      const c=document.createElement('span');
+      c.className='cell'+(PIPS[n].includes(cell)?' pip':'');
+      face.appendChild(c);
+    }
+    die.appendChild(face);
+  });
+}
+
+function buildLegend(){
+  const box=$('legend'); box.innerHTML='';
+  CATEGORIES.forEach((c,i)=>{
+    const el=document.createElement('div'); el.className='lg';
+    el.innerHTML=`<span class="n">${i+1}</span><span class="sw" style="background:${c.color}"></span>${c.name}`;
+    box.appendChild(el);
+  });
+}
+
+/* ---------- setup screen ---------- */
+function renderNames(){
+  const box=$('names'); box.innerHTML='';
+  for(let i=0;i<numTeams;i++){
+    const row=document.createElement('div'); row.className='name-row';
+    row.innerHTML=`<div class="seat">${i+1}</div>`;
+    const inp=document.createElement('input');
+    inp.type='text'; inp.placeholder=`Team ${i+1}`;
+    inp.value=teamNames[i]||'';
+    inp.addEventListener('input',e=>teamNames[i]=e.target.value);
+    row.appendChild(inp); box.appendChild(row);
+  }
+}
+$('minus').onclick=()=>{ if(numTeams>3){numTeams--; $('teamCount').textContent=numTeams; renderNames();} };
+$('plus').onclick =()=>{ if(numTeams<6){numTeams++; $('teamCount').textContent=numTeams; renderNames();} };
+
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+
+$('startBtn').onclick=()=>{
+  teams=[]; 
+  for(let i=0;i<numTeams;i++){
+    teams.push({name:(teamNames[i]||`Team ${i+1}`).trim()||`Team ${i+1}`, earned:new Set()});
+  }
+  pools={};
+  CATEGORIES.forEach(c=>{ pools[c.key]={list:shuffle([...QUESTIONS[c.key]]), idx:0}; });
+  current=0;
+  showScreen('game');
+  renderTurn();
+  renderStandings();
+  showRoller();
+};
+
+/* ---------- game screen ---------- */
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  $(id).classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function renderTurn(){
+  const t=teams[current];
+  $('turnName').textContent=t.name;
+  $('turnPie').innerHTML=pieSVG(t.earned);
+  $('turnHeld').textContent=`${t.earned.size} / 6`;
+}
+
+function renderStandings(){
+  const box=$('standings'); box.innerHTML='';
+  teams.forEach((t,i)=>{
+    const row=document.createElement('div');
+    row.className='team-row'+(i===current?' active':'');
+    row.innerHTML=`<div class="pie-wrap">${pieSVG(t.earned)}</div>
+      <div class="meta"><div class="nm">${escapeHTML(t.name)}</div>
+      <div class="ct">${t.earned.size}/6 wedges</div></div>`;
+    box.appendChild(row);
+  });
+}
+
+function showRoller(){
+  $('qcardWrap').style.display='none';
+  $('roller').style.display='block';
+  $('rollPrompt').innerHTML=`<b>${escapeHTML(teams[current].name)}</b>, roll to draw a category`;
+  $('rollResult').classList.remove('show');
+  $('rollResult').innerHTML='';
+  const rb=$('rollBtn');
+  rb.style.display=''; rb.disabled=false; rb.textContent='Roll the die';
+  $('die').classList.add('idle');
+  rolling=false;
+}
+
+function doRoll(){
+  if(rolling) return;
+  rolling=true;
+  const rb=$('rollBtn'); rb.disabled=true; rb.textContent='Rolling…';
+  $('rollResult').classList.remove('show'); $('rollResult').innerHTML='';
+  const die=$('die'); die.classList.remove('idle');
+
+  const result=1+Math.floor(Math.random()*6);
+  const cat=CATEGORIES[result-1];
+  const tgt=FACE_ROT[result];
+  dieSpin+=4;                                  // keep tumbling forward each roll
+  die.style.transform=`rotateX(${tgt.x+360*dieSpin}deg) rotateY(${tgt.y+360*dieSpin}deg)`;
+
+  setTimeout(()=>{
+    rb.style.display='none';
+    const owned=teams[current].earned.has(cat.key);
+    const res=$('rollResult');
+    res.style.setProperty('--c',cat.color);
+    res.innerHTML=`<div class="r-line"><span class="r-num">${result}</span>
+        <span>You drew <b>${cat.name}</b>${owned?' &mdash; already in your pie':''}</span></div>
+      <button class="btn" id="goQ">Open the question</button>`;
+    res.classList.add('show');
+    $('goQ').onclick=()=>{ rolling=false; askQuestion(cat); };
+  }, 1200);
+}
+$('rollBtn').onclick=doRoll;
+
+function nextQuestion(key){
+  const p=pools[key];
+  if(p.idx>=p.list.length){ p.list=shuffle(p.list); p.idx=0; }
+  return p.list[p.idx++];
+}
+
+function askQuestion(cat){
+  active=cat; revealed=false; locked=false;
+  const item=nextQuestion(cat.key);
+  $('roller').style.display='none';
+  $('qcardWrap').style.display='block';
+  const card=$('qcard'); card.style.setProperty('--c',cat.color);
+  $('qCatName').textContent=cat.name;
+  $('qText').textContent=item.q;
+  $('aText').textContent=item.a;
+  $('answer').classList.remove('show');
+  $('feedback').innerHTML='';
+  // reset actions to reveal state
+  $('qactions').innerHTML=`<button class="btn" id="revealBtn">Reveal answer</button>`;
+  $('revealBtn').onclick=reveal;
+}
+
+function reveal(){
+  revealed=true;
+  $('answer').classList.add('show');
+  const t=teams[current];
+  const owns=t.earned.has(active.key);
+  $('qactions').innerHTML=`
+    <button class="btn correct" id="rightBtn">${owns?'Correct — go again':'Correct — claim wedge'}</button>
+    <button class="btn miss" id="wrongBtn">Missed it</button>`;
+  $('rightBtn').onclick=markRight;
+  $('wrongBtn').onclick=markWrong;
+}
+
+function markRight(){
+  locked=true;
+  const t=teams[current];
+  const isNew=!t.earned.has(active.key);
+  t.earned.add(active.key);
+  renderTurn(); renderStandings();
+  if(t.earned.size===6){ return winRound(t); }
+  const msg=isNew
+    ? `<b>${escapeHTML(t.name)}</b> claims the ${active.name} wedge. Same team — go again.`
+    : `Correct. <b>${escapeHTML(t.name)}</b> already holds ${active.name}. Go again.`;
+  $('feedback').innerHTML=msg;
+  $('qactions').innerHTML=`<button class="btn" id="contBtn">Roll again</button>`;
+  $('contBtn').onclick=()=>showRoller();
+}
+
+function markWrong(){
+  locked=true;
+  const t=teams[current];
+  current=(current+1)%teams.length;
+  $('feedback').innerHTML=`No wedge that time. Over to <b>${escapeHTML(teams[current].name)}</b>.`;
+  $('qactions').innerHTML=`<button class="btn" id="contBtn">Next team</button>`;
+  $('contBtn').onclick=()=>{ renderTurn(); renderStandings(); showRoller(); };
+}
+
+function winRound(t){
+  $('winName').textContent=t.name;
+  $('winPie').innerHTML=pieSVG(t.earned);
+  showScreen('win');
+  burstConfetti();
+}
+
+$('againBtn').onclick=()=>{ stopConfetti(); showScreen('setup'); };
+
+function escapeHTML(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+/* ---------------- restrained confetti for the win moment ---------------- */
+const cv=$('confetti'), cx2=cv.getContext('2d');
+let cParts=[], cAnim=null;
+const C_COLORS=['#2F73C9','#D94E8A','#E8B11F','#8254C0','#2EA15C','#E2772E','#C9A35B'];
+function sizeCanvas(){cv.width=innerWidth;cv.height=innerHeight;}
+addEventListener('resize',sizeCanvas); sizeCanvas();
+function burstConfetti(){
+  sizeCanvas(); cParts=[];
+  for(let i=0;i<120;i++){
+    cParts.push({x:innerWidth/2+(Math.random()-.5)*120, y:innerHeight*0.35,
+      vx:(Math.random()-.5)*9, vy:Math.random()*-11-4,
+      g:0.28+Math.random()*0.12, s:5+Math.random()*6,
+      rot:Math.random()*6.28, vr:(Math.random()-.5)*0.3,
+      col:C_COLORS[Math.floor(Math.random()*C_COLORS.length)], life:0});
+  }
+  if(!cAnim) loopConfetti();
+}
+function loopConfetti(){
+  cx2.clearRect(0,0,cv.width,cv.height);
+  let alive=false;
+  cParts.forEach(p=>{
+    p.life++; p.vy+=p.g; p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr;
+    if(p.y<cv.height+40 && p.life<260){
+      alive=true;
+      cx2.save(); cx2.translate(p.x,p.y); cx2.rotate(p.rot);
+      cx2.globalAlpha=Math.max(0,1-p.life/260); cx2.fillStyle=p.col;
+      cx2.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.6); cx2.restore();
+    }
+  });
+  if(alive){ cAnim=requestAnimationFrame(loopConfetti); }
+  else { stopConfetti(); }
+}
+function stopConfetti(){ if(cAnim){cancelAnimationFrame(cAnim);cAnim=null;} cx2.clearRect(0,0,cv.width,cv.height); }
+
+/* init */
+buildDie();
+buildLegend();
+renderNames();
+</script>
+</body>
+</html>
