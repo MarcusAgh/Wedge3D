@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wedge — Trivia Night v2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+
+  <!-- Three.js canvas fills the background -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- ============ SETUP OVERLAY ============ -->
+  <div id="overlay-setup" class="overlay overlay--active">
+    <div class="setup-panel panel">
+
+      <div class="setup-brand">
+        <svg class="logo" viewBox="0 0 100 100" aria-hidden="true">
+          <g stroke="#15110d" stroke-width="3">
+            <path d="M50 50 L50 4 A46 46 0 0 1 89.8 27 Z" fill="#2F73C9"/>
+            <path d="M50 50 L89.8 27 A46 46 0 0 1 89.8 73 Z" fill="#D94E8A"/>
+            <path d="M50 50 L89.8 73 A46 46 0 0 1 50 96 Z" fill="#E8B11F"/>
+            <path d="M50 50 L50 96 A46 46 0 0 1 10.2 73 Z" fill="#8254C0"/>
+            <path d="M50 50 L10.2 73 A46 46 0 0 1 10.2 27 Z" fill="#2EA15C"/>
+            <path d="M50 50 L10.2 27 A46 46 0 0 1 50 4 Z" fill="#E2772E"/>
+          </g>
+          <circle cx="50" cy="50" r="9" fill="#15110d"/>
+        </svg>
+        <div>
+          <h1>Wedge</h1>
+          <span class="tagline">Six Categories · One Filling Pie</span>
+        </div>
+      </div>
+
+      <div class="setup-body">
+        <!-- Edition picker -->
+        <div class="field">
+          <label class="field-label">Edition</label>
+          <div class="edition-grid" id="editionGrid">
+            <button class="edition-btn edition-btn--active" data-edition="Easy">
+              <span class="edition-name">Family</span>
+              <span class="edition-desc">Approachable for all ages</span>
+            </button>
+            <button class="edition-btn" data-edition="Medium">
+              <span class="edition-name">Classic</span>
+              <span class="edition-desc">The balanced standard</span>
+            </button>
+            <button class="edition-btn" data-edition="Difficult">
+              <span class="edition-name">Master</span>
+              <span class="edition-desc">For the know-it-alls</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Board length -->
+        <div class="field">
+          <label class="field-label">Board length</label>
+          <div class="edition-grid" id="boardGrid">
+            <button class="edition-btn" data-board="short">
+              <span class="edition-name">Short</span>
+              <span class="edition-desc">3 tiles per arc · 24 spaces</span>
+            </button>
+            <button class="edition-btn edition-btn--active" data-board="medium">
+              <span class="edition-name">Medium</span>
+              <span class="edition-desc">5 tiles per arc · 36 spaces</span>
+            </button>
+            <button class="edition-btn" data-board="long">
+              <span class="edition-name">Long</span>
+              <span class="edition-desc">8 tiles per arc · 54 spaces</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Team count -->
+        <div class="field">
+          <label class="field-label">How many teams?</label>
+          <div class="stepper">
+            <button class="stepper-btn" id="teamMinus" aria-label="Fewer teams">−</button>
+            <span class="stepper-count" id="teamCount">3</span>
+            <button class="stepper-btn" id="teamPlus" aria-label="More teams">+</button>
+          </div>
+        </div>
+
+        <!-- Team names + pawn colors -->
+        <div class="field">
+          <label class="field-label">Name your teams &amp; pick pawn colors</label>
+          <div class="name-list" id="nameList"></div>
+        </div>
+
+        <button class="btn btn--primary" id="startBtn" style="width:100%;margin-top:8px">
+          Start the game
+        </button>
+      </div>
+
+      <div id="loadStatus" class="load-status">Loading question bank…</div>
+    </div>
+  </div>
+
+  <!-- ============ ROUND TIMER (top-right, shown during question) ============ -->
+  <div id="roundTimer" style="display:none"></div>
+
+  <!-- ============ HUD OVERLAY (shown during game) ============ -->
+  <div id="overlay-hud" class="overlay hud-overlay" style="display:none">
+    <div class="hud-info-panel panel" id="hudInfoPanel">
+      <div class="hud-active-team">
+        <div id="hudPie" class="hud-pie"></div>
+        <div class="hud-team-info">
+          <div class="hud-label">Now playing</div>
+          <div class="hud-team-name" id="hudTeamName">—</div>
+          <div class="hud-wedge-count" id="hudWedgeCount">0 / 6 wedges</div>
+        </div>
+      </div>
+      <div class="hud-divider"></div>
+      <div class="hud-scoreboard" id="hudScoreboard"></div>
+    </div>
+    <div class="hud-action-area">
+      <div class="hud-roll-hint" id="hudRollHint" style="display:none">Click a glowing space to move</div>
+      <button class="btn btn--roll" id="rollBtn" disabled>Roll the die <kbd>Space</kbd></button>
+    </div>
+  </div>
+
+  <!-- ============ QUESTION MODAL — 3D flip card ============ -->
+  <div id="overlay-question" class="overlay overlay--question" style="display:none">
+    <div class="qcard-scene">
+      <div class="qcard-wrap" id="qcardWrap">
+        <div class="qcard-3d" id="qcard3d">
+
+          <!-- FRONT — question -->
+          <div class="qcard-face qcard-face--front" id="qcardFront">
+            <div class="qcard-header" id="qcardHeader">
+              <span class="qcard-cat-label" id="qcardCatName">Category</span>
+              <span class="qcard-flip-hint">tap to flip ›</span>
+            </div>
+            <div class="qcard-face-content">
+              <div class="qcard-question" id="qcardQuestion">—</div>
+            </div>
+          </div>
+
+          <!-- BACK — answer + scoring -->
+          <div class="qcard-face qcard-face--back" id="qcardBack">
+            <div class="qcard-header" id="qcardHeaderBack">
+              <span class="qcard-cat-label" id="qcardCatNameBack">Category</span>
+              <span class="qcard-flip-hint">‹ flip back</span>
+            </div>
+            <div class="qcard-face-content">
+              <div class="answer-label">Answer</div>
+              <div class="answer-text" id="qcardAnswerText">—</div>
+            </div>
+            <div class="qcard-actions" id="qcardActions"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FINAL QUESTION CATEGORY PICKER ============ -->
+  <div id="overlay-catpick" class="overlay overlay--modal" style="display:none">
+    <div class="catpick-panel panel">
+      <p class="catpick-title">All other teams: choose the final category</p>
+      <div class="catpick-grid" id="catpickGrid"></div>
+    </div>
+  </div>
+
+  <!-- ============ WIN SCREEN ============ -->
+  <div id="overlay-win" class="overlay overlay--center" style="display:none">
+    <div class="win-panel">
+      <div class="win-pie" id="winPie"></div>
+      <p class="eyebrow" style="text-align:center;margin-bottom:8px">Round complete</p>
+      <h2 class="win-heading"><span class="win-name" id="winName">—</span> takes it</h2>
+      <p class="win-sub">A full pie — all six wedges. Nicely played.</p>
+      <button class="btn btn--primary" id="newGameBtn">New game</button>
+    </div>
+  </div>
+
+  <!-- ============ TOAST AREA ============ -->
+  <div id="toast-area"></div>
+
+  <!-- ============ ROLL SPLASH ============ -->
+  <div id="roll-splash" style="display:none">
+    <div class="roll-splash-bg"></div>
+    <div class="roll-splash-content">
+      <span class="roll-splash-label">rolled</span>
+      <span class="roll-splash-number" id="rollSplashNum">4</span>
+    </div>
+  </div>
+
+  <!-- ============ TURN BANNER ============ -->
+  <div id="turn-banner" style="display:none">
+    <div class="turn-banner-content">
+      <div class="turn-banner-pie" id="turnBannerPie"></div>
+      <div>
+        <div class="turn-banner-name" id="turnBannerName">Team 1</div>
+        <div class="turn-banner-sub">your turn</div>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="confetti-canvas"></canvas>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
