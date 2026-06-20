@@ -8,6 +8,7 @@ import { SMAAPass }          from 'three/addons/postprocessing/SMAAPass.js';
 import { ShaderPass }        from 'three/addons/postprocessing/ShaderPass.js';
 import { VignetteShader }    from 'three/addons/shaders/VignetteShader.js';
 import { OutputPass }        from 'three/addons/postprocessing/OutputPass.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import { loadQuestions, createPoolManager, CATEGORIES } from './data/loadQuestions.js';
 import { buildBoard, makeSectorShape } from './scene/board.js';
 import { DiceSystem, createPhysicsWorld } from './scene/dice.js';
@@ -36,21 +37,21 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace  = THREE.SRGBColorSpace;
 renderer.toneMapping       = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 0.72;
+renderer.toneMappingExposure = 0.82;
 
 // IBL environment — RoomEnvironment ships with Three.js, no external files needed
 const pmrem = new THREE.PMREMGenerator(renderer);
 pmrem.compileEquirectangularShader();
 const roomEnv = new RoomEnvironment(renderer);
-const envTexture = pmrem.fromScene(roomEnv, 0.04).texture;
+const envTexture = pmrem.fromScene(roomEnv, 0.02).texture;
 // Will be assigned to scene.environment after scene is created below
 
 /* ================================================================
    Scene + Camera
    ================================================================ */
 const scene  = new THREE.Scene();
-scene.background = new THREE.Color(0x15110D);
-scene.environment = envTexture;    // IBL reflections on all materials
+scene.environment = envTexture;
+scene.environmentIntensity = 0.55;
 pmrem.dispose();
 roomEnv.dispose();
 
@@ -59,34 +60,37 @@ const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 13
 camera.position.set(0, 23, 18);
 camera.lookAt(0, 0, 0);
 
-/* ---- Lighting rig (tuned for ACES + IBL) ---- */
+/* ---- Lighting rig — soft IBL + area light + single directional key ---- */
 
-// Soft fill from sky/ground — warms the tops, darkens the underside of the board
-const hemi = new THREE.HemisphereLight(0xf5e8d0, 0x1a1208, 0.32);
+// Soft sky/ground fill
+const hemi = new THREE.HemisphereLight(0xf3ead8, 0x140d06, 0.40);
 scene.add(hemi);
 
-// Key light: slightly steeper angle for sharper tile shadows
-const key = new THREE.DirectionalLight(0xfff8ee, 0.60);
-key.position.set(4, 18, 7);
+// Single directional key — owns all shadow casting
+const key = new THREE.DirectionalLight(0xfff6ec, 0.78);
+key.position.set(5, 18, 7);
 key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
+key.shadow.mapSize.set(4096, 4096);
 key.shadow.camera.near   = 2;
 key.shadow.camera.far    = 55;
 key.shadow.camera.left   = -12;
 key.shadow.camera.right  =  12;
 key.shadow.camera.top    =  12;
 key.shadow.camera.bottom = -12;
-key.shadow.bias   = -0.0003;
-key.shadow.radius =  2.5;
+key.shadow.bias       = -0.0004;
+key.shadow.normalBias =  0.02;
+key.shadow.radius     =  3;
 scene.add(key);
 
-// Warm overhead lamp — game-night felt-under-a-lamp glow
-const lamp = new THREE.PointLight(0xffcc88, 0.25, 28);
-lamp.position.set(0, 13, 0);  // raised so falloff spreads more evenly
-scene.add(lamp);
+// Wide overhead area light — even tabletop glow, no point hotspot
+RectAreaLightUniformsLib.init();
+const softbox = new THREE.RectAreaLight(0xfff2dd, 2.0, 16, 16);
+softbox.position.set(0, 15, 0);
+softbox.lookAt(0, 0, 0);
+scene.add(softbox);
 
-// Rim SpotLight — rakes across the brass ring and hub top
-const rimSpot = new THREE.SpotLight(0xffe8aa, 0.80, 38, Math.PI / 5.5, 0.5, 1.6);
+// Faint rim — brass sparkle only, not a second key
+const rimSpot = new THREE.SpotLight(0xffe8aa, 0.35, 38, Math.PI / 5.5, 0.5, 1.6);
 rimSpot.position.set(-4, 17, -7);
 rimSpot.target.position.set(0, 0, 0);
 scene.add(rimSpot);
@@ -98,6 +102,69 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   composer.setSize(innerWidth, innerHeight);
 });
+
+/* ================================================================
+   Surroundings — walnut table surface + warm background
+   ================================================================ */
+
+// Warm amber background — always fills the void
+scene.background = new THREE.Color(0x5a2d0e);
+
+// Procedural walnut grain texture
+function makeWoodTex() {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 512;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#7a4520'; ctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 140; i++) {
+    const y  = Math.random() * 512;
+    const lw = 0.6 + Math.random() * 2.8;
+    const a  = 0.05 + Math.random() * 0.12;
+    const dk = Math.random() > 0.5;
+    ctx.strokeStyle = dk ? `rgba(35,16,4,${a})` : `rgba(130,72,24,${a})`;
+    ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.moveTo(0, y);
+    for (let x = 0; x <= 512; x += 20)
+      ctx.lineTo(x, y + (Math.random() - 0.5) * 7);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4, 4);
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+const _woodTex = makeWoodTex();
+const _woodMat = new THREE.MeshPhysicalMaterial({
+  map:      _woodTex,
+  color:    0xb87840,
+  roughness: 0.76, metalness: 0.0,
+  clearcoat: 0.20, clearcoatRoughness: 0.38,
+  envMapIntensity: 0.45,
+  emissive: 0x5a2d0e, emissiveIntensity: 0.50,
+});
+
+// Large disc under the board for shadow receiving
+const table = new THREE.Mesh(new THREE.CircleGeometry(60, 64), _woodMat);
+table.rotation.x = -Math.PI / 2;
+table.position.y = -0.34;
+table.receiveShadow = true;
+scene.add(table);
+
+// Visible wood ring at board-surface height (y=0.01) starting just outside
+// the brass rim — this is what the camera actually sees around the board.
+// Verified in camera space: r=9.80 at x=±9.80 falls at 18.5° horizontal
+// (inside 29.3° half-FOV) and at z=−9.80 falls at 12.4° vertical (inside
+// 17.5° half-FOV), so this ring is directly in frame on all sides.
+const tableRing = new THREE.Mesh(new THREE.RingGeometry(9.80, 45, 96), _woodMat);
+tableRing.rotation.x = -Math.PI / 2;
+tableRing.position.y = 0.01;
+tableRing.receiveShadow = true;
+scene.add(tableRing);
+
+// Fog: same warm amber as background so the wood fades into it naturally.
+// Starts at 28 units (just past the camera→board distance of ~29) so the
+// close ring is crisp; outer wood fades by ~45 units.
+scene.fog = new THREE.Fog(0x5a2d0e, 28, 58);
 
 /* ================================================================
    Game objects
@@ -118,10 +185,13 @@ const composer = new EffectComposer(renderer);
 const _renderPass = new RenderPass(scene, camera);
 composer.addPass(_renderPass);
 
-// Subtle ground-truth AO — darkens grout lines between tiles
+// AO pass — disabled: OUTPUT.Default bleeds RoomEnvironment's blue-grey IBL
+// into background pixels producing a teal cast. Grout-line depth is handled
+// by material color + the directional key-light shadows instead.
 const gtaoPass = new GTAOPass(scene, camera, innerWidth, innerHeight);
 gtaoPass.output = GTAOPass.OUTPUT.Default;
-gtaoPass.blendIntensity = 0.6;
+gtaoPass.blendIntensity = 0.20;
+gtaoPass.enabled = false;
 composer.addPass(gtaoPass);
 
 // Bloom — only the very brightest specular hits on brass/gems; not the lamp halo
@@ -129,7 +199,7 @@ const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(innerWidth, innerHeight),
   0.20,   // strength  (was 0.40 — halved to kill centre wash)
   0.50,   // radius    (tighter so it doesn't spread far from source)
-  0.85    // threshold  (raised so ambient lit areas don't bloom)
+  0.90    // threshold  (raised so ambient lit areas don't bloom)
 );
 composer.addPass(bloomPass);
 
@@ -140,21 +210,23 @@ const smaaPass = new SMAAPass(
 );
 composer.addPass(smaaPass);
 
-// Vignette — cinematic edge darkening
+// Vignette — cinematic edge darkening.
+// darkness must be ≤ 1.0: the shader mixes toward vec3(1-darkness), so values
+// above 1.0 produce negative linear RGB which ACES tone-maps to cyan/teal.
 const vignettePass = new ShaderPass(VignetteShader);
-vignettePass.uniforms['offset'].value   = 0.90;
-vignettePass.uniforms['darkness'].value = 1.55;
+vignettePass.uniforms['offset'].value   = 0.85;
+vignettePass.uniforms['darkness'].value = 0.95;
 composer.addPass(vignettePass);
 
 // OutputPass — applies renderer.toneMapping + SRGBColorSpace to final frame
 const outputPass = new OutputPass();
 composer.addPass(outputPass);
 
-// Quality toggle — disables AO + Bloom on Low to protect weak GPUs
+// Quality toggle — disables Bloom on Low to protect weak GPUs.
+// GTAO is always off (causes teal IBL bleed into background).
 let _highQuality = true;
 function setQuality(high) {
   _highQuality        = high;
-  gtaoPass.enabled    = high;
   bloomPass.enabled   = high;
   qualBtn.textContent = high ? 'Quality: High' : 'Quality: Low';
 }
@@ -375,7 +447,7 @@ document.body.appendChild(ctrlBar);
    ================================================================ */
 const _vBadge = document.createElement('div');
 _vBadge.id = 'version-badge';
-_vBadge.textContent = 'v2';
+_vBadge.textContent = 'v3';
 document.body.appendChild(_vBadge);
 
 /* ================================================================
@@ -404,7 +476,9 @@ document.body.appendChild(_legend);
 const raycaster    = new THREE.Raycaster();
 const _mouse       = new THREE.Vector2();
 const reachableMap = new Map();   // tile mesh → spaceId
-const outlineObjs  = [];          // { tileMesh, outlineMesh, outlineMat }
+const outlineObjs  = [];          // { outlineMesh, outlineMat }
+
+const HILITE = 0xfff0c0;  // bright warm gold — single tunable constant
 
 let _pulseT = 0;
 
@@ -419,26 +493,37 @@ function activateReachable(spaceIds) {
     let outlineMesh, outlineMat;
 
     if (sp) {
-      // Sector-shaped flat overlay sitting just above the tile surface
-      const hShape = makeSectorShape(
+      // Border BAND: outer sector with inner hole punched out.
+      // Result is a ~0.06-unit-wide crisp ring tracing the tile edge.
+      const outerShape = makeSectorShape(
         sp.r_in  - 0.05, sp.r_out + 0.05,
-        sp.a_start - 0.013, sp.a_end + 0.013
+        sp.a_start - 0.012, sp.a_end + 0.012
       );
-      outlineMat  = new THREE.MeshBasicMaterial({
-        color: 0xffffff, transparent: true, opacity: 0.42,
-        depthWrite: false, side: THREE.DoubleSide,
+      // Hole must have opposite winding for earcut — reverse the point array
+      const holePts = makeSectorShape(
+        sp.r_in  + 0.01, sp.r_out - 0.01,
+        sp.a_start + 0.012, sp.a_end - 0.012
+      ).getPoints(16).reverse();
+      const holePath = new THREE.Path().setFromPoints(holePts);
+      outerShape.holes.push(holePath);
+
+      outlineMat = new THREE.MeshStandardMaterial({
+        color: HILITE, emissive: HILITE, emissiveIntensity: 0.80,
+        transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide,
       });
-      outlineMesh = new THREE.Mesh(new THREE.ShapeGeometry(hShape, 20), outlineMat);
+      outlineMesh = new THREE.Mesh(new THREE.ShapeGeometry(outerShape, 24), outlineMat);
       outlineMesh.rotation.x = -Math.PI / 2;
-      outlineMesh.position.y = sp.height + 0.012;
+      outlineMesh.position.y = sp.height + 0.02;
       boardGroup.add(outlineMesh);
     } else {
-      // Hub: torus ring (hub is still CylinderGeometry)
-      const r = (mesh.geometry?.parameters?.radiusTop ?? 1.55) + 0.12;
-      outlineMat  = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
-      outlineMesh = new THREE.Mesh(new THREE.TorusGeometry(r, 0.065, 10, 56), outlineMat);
+      // Hub destination: bright torus ring at the brass lip
+      outlineMat = new THREE.MeshStandardMaterial({
+        color: HILITE, emissive: HILITE, emissiveIntensity: 0.80,
+        transparent: true, opacity: 0.95, depthWrite: false,
+      });
+      outlineMesh = new THREE.Mesh(new THREE.TorusGeometry(1.62, 0.07, 10, 56), outlineMat);
       outlineMesh.rotation.x = Math.PI / 2;
-      outlineMesh.position.y = (mesh.userData.hubTopY ?? 0.30) + 0.03;
+      outlineMesh.position.y = (mesh.userData.hubTopY ?? 0.32) + 0.04;
       boardGroup.add(outlineMesh);
     }
 
@@ -719,71 +804,203 @@ window.addEventListener('wedge:showQuestion', e => {
 });
 
 window.addEventListener('wedge:wedgeEarned', e => {
-  const { teamIdx, category } = e.detail;
+  const { teamIdx, category, team } = e.detail;
   const cat = CATEGORIES.find(c => c.key === category);
   SFX.wedge();
-  showToast(`${cat?.name ?? ''} wedge earned!`, cat?.color);
   if (cat) {
     const catHex = parseInt(cat.color.slice(1), 16);
-    tokens.wedgeFlourishAt(teamIdx, catHex);
-    if (!_camReduceMotion) _wedgeCelebration(catHex);
+    if (_camReduceMotion) {
+      // No full celebration — show the toast so the player gets the feedback
+      showToast(`${cat.name} wedge earned!`, cat.color);
+    }
+    _wedgePuzzleCelebration({ teamIdx, catHex, wedges: team.wedges });
   }
 });
 
 /* ================================================================
-   Wedge-earned celebration — screen shake + DOM shockwave
+   Wedge puzzle celebration — token rises to stage, wedge flies in
    ================================================================ */
-function _wedgeCelebration(catHex) {
-  const r = (catHex >> 16) & 0xff;
-  const g = (catHex >> 8)  & 0xff;
-  const b =  catHex        & 0xff;
-  const cssColor = `rgb(${r},${g},${b})`;
+function worldToScreen(v) {
+  const p = v.clone().project(camera);
+  return { x: (p.x * 0.5 + 0.5) * innerWidth, y: (-p.y * 0.5 + 0.5) * innerHeight };
+}
 
-  // Screen shake — offset the canvas briefly
-  const shakeFrames = 18;
-  const shakeAmp    = 6;
-  let   shakeT      = 0;
-  const origTransform = canvas.style.transform;
-  const shakeTick = () => {
-    shakeT++;
-    if (shakeT > shakeFrames) {
-      canvas.style.transform = origTransform;
-      return;
-    }
-    const decay = 1 - shakeT / shakeFrames;
-    const ox = (Math.random() * 2 - 1) * shakeAmp * decay;
-    const oy = (Math.random() * 2 - 1) * shakeAmp * decay;
-    canvas.style.transform = `translate(${ox}px, ${oy}px)`;
-    requestAnimationFrame(shakeTick);
-  };
-  requestAnimationFrame(shakeTick);
-
-  // Shockwave ring — DOM element that expands and fades
-  for (let ri = 0; ri < 2; ri++) {
-    const ring = document.createElement('div');
-    ring.style.cssText = `
-      position:fixed; left:50%; top:50%;
-      transform:translate(-50%,-50%) scale(0.1);
-      width:120px; height:120px; border-radius:50%;
-      border: 4px solid ${cssColor};
-      pointer-events:none; z-index:300;
-      transition: transform ${0.55 + ri * 0.15}s cubic-bezier(.2,.6,.2,1),
-                  opacity   ${0.55 + ri * 0.15}s ease;
-      opacity:1;
-    `;
-    document.body.appendChild(ring);
-    // Delayed start for second ring
-    setTimeout(() => {
-      ring.style.transform = 'translate(-50%,-50%) scale(4.5)';
-      ring.style.opacity   = '0';
-    }, ri * 120 + 20);
-    setTimeout(() => ring.remove(), 900 + ri * 150);
+function _wedgePuzzleCelebration({ teamIdx, catHex, wedges }) {
+  if (_camReduceMotion) {
+    tokens.updateWedges(teamIdx, wedges);
+    tokens.wedgeFlourishAt(teamIdx, catHex);
+    const team = state.teams[teamIdx];
+    hud.updateActiveTeam(team);
+    hud.updateScoreboard(state.teams, teamIdx);
+    hud.setRollEnabled(true);
+    return;
   }
 
-  // Brief bloom flash — bloom pass strength spike
-  const origStrength = bloomPass.strength;
-  bloomPass.strength = Math.min(origStrength + 0.45, 1.0);
-  setTimeout(() => { bloomPass.strength = origStrength; }, 280);
+  const cssColor  = `#${catHex.toString(16).padStart(6, '0')}`;
+  const dr = ((catHex >> 16) & 0xff) * 0.55 | 0;
+  const dg = ((catHex >>  8) & 0xff) * 0.55 | 0;
+  const db = (catHex         & 0xff) * 0.55 | 0;
+  const darkColor = `rgb(${dr},${dg},${db})`;
+
+  // Veil appears immediately
+  const veil = document.createElement('div');
+  veil.className = 'wedge-veil';
+  document.body.appendChild(veil);
+  veil.getBoundingClientRect();
+  veil.classList.add('show');
+
+  // Stage position: 13 units along the camera forward ray → projects to screen centre
+  const camFwd  = new THREE.Vector3();
+  camera.getWorldDirection(camFwd);
+  const stagePos = camera.position.clone().addScaledVector(camFwd, 13);
+
+  // Quaternion that rotates the token's top face to point toward the camera,
+  // so it appears as a full circle instead of an oval when at stage
+  const toCamera = camera.position.clone().sub(stagePos).normalize();
+  const faceQuat = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0), toCamera
+  );
+
+  // Save the token's current board position so we can return it there
+  const boardPos = tokens.getTokenWorldPos(teamIdx);
+
+  // Phase 1: Token rises to centre stage at 3× size, tilting to face camera (680ms)
+  tokens.liftToStage(teamIdx, stagePos, 3.0, 0.68, faceQuat).then(() => {
+    // 160ms hold so players can register the large centred token before the wedge arrives
+    setTimeout(() => {
+      const tokenScreen = worldToScreen(stagePos);
+
+      // Phase 2: Wedge drops in from above (520ms)
+      _flyWedgeIn({ tokenScreen, cssColor, darkColor, uid: teamIdx + '_' + Date.now() })
+        .then(() => {
+          // IMPACT — fires the moment the wedge lands
+          tokens.updateWedges(teamIdx, wedges);
+          tokens.wedgeFlourishAt(teamIdx, catHex); // sparks + rings + light column + pop spring
+
+          const origStrength = bloomPass.strength;
+          bloomPass.strength = Math.min(origStrength + 0.45, 1.0);
+          setTimeout(() => { bloomPass.strength = origStrength; }, 280);
+
+          const shakeFrames = 18, shakeAmp = 6;
+          let shakeT = 0;
+          const origTransform = canvas.style.transform;
+          const shakeTick = () => {
+            shakeT++;
+            if (shakeT > shakeFrames) { canvas.style.transform = origTransform; return; }
+            const decay = 1 - shakeT / shakeFrames;
+            canvas.style.transform = `translate(${(Math.random()*2-1)*shakeAmp*decay}px,${(Math.random()*2-1)*shakeAmp*decay}px)`;
+            requestAnimationFrame(shakeTick);
+          };
+          requestAnimationFrame(shakeTick);
+
+          // HUD fills in sync with the 3D solidify
+          const team = state.teams[teamIdx];
+          hud.updateActiveTeam(team);
+          hud.updateScoreboard(state.teams, teamIdx);
+
+          // Veil fades out while token glides home
+          veil.classList.remove('show');
+          setTimeout(() => veil.remove(), 220);
+
+          // Phase 3: Token glides back to its board position (560ms)
+          // Roll re-enables only once the token has fully landed
+          tokens.dropToBoard(teamIdx, boardPos, 0.56).then(() => {
+            hud.setRollEnabled(true);
+          });
+        });
+    }, 160);
+  });
+}
+
+// DOM wedge drops straight down from above into the centred token
+function _flyWedgeIn({ tokenScreen, cssColor, darkColor, uid }) {
+  const size = Math.min(window.innerWidth * 0.30, 240);
+  const R    = size / 2;
+  const a1   = (240 * Math.PI) / 180;
+  const a2   = (300 * Math.PI) / 180;
+  const x1   = R + R * Math.cos(a1);
+  const y1   = R + R * Math.sin(a1);
+  const x2   = R + R * Math.cos(a2);
+  const y2   = R + R * Math.sin(a2);
+
+  const svgMarkup = `<svg xmlns="http://www.w3.org/2000/svg"
+      width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"
+      style="filter:drop-shadow(0 0 18px ${cssColor})">
+    <defs>
+      <radialGradient id="wg${uid}" cx="50%" cy="50%" r="70%">
+        <stop offset="0%"   stop-color="rgba(255,255,255,0.38)"/>
+        <stop offset="35%"  stop-color="${cssColor}" stop-opacity="1"/>
+        <stop offset="100%" stop-color="${darkColor}" stop-opacity="1"/>
+      </radialGradient>
+      <radialGradient id="wgh${uid}" cx="50%" cy="12%" r="48%">
+        <stop offset="0%"   stop-color="rgba(255,255,255,0.55)"/>
+        <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+      </radialGradient>
+    </defs>
+    <path d="M ${R} ${R} L ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2} Z"
+      fill="url(#wg${uid})" stroke="#C9A35B" stroke-width="2.5"/>
+    <path d="M ${R} ${R} L ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2} Z"
+      fill="url(#wgh${uid})" opacity="0.72"/>
+  </svg>`;
+
+  // Start directly above the token, off the top of the screen
+  const startX = tokenScreen.x;
+  const startY = -size;
+  const endX   = tokenScreen.x; // straight vertical drop — no horizontal drift
+  const endY   = tokenScreen.y;
+
+  const wedgeWrap = document.createElement('div');
+  wedgeWrap.style.cssText = `
+    position:fixed; left:0; top:0;
+    transform:translate(${startX}px,${startY}px) translate(-50%,-50%) scale(1.6);
+    transform-origin:center; z-index:300; pointer-events:none;
+    will-change:transform,opacity; opacity:0; --wedge-glow:${cssColor};
+  `;
+  wedgeWrap.innerHTML = svgMarkup;
+  document.body.appendChild(wedgeWrap);
+
+  return new Promise(resolve => {
+    const flyStart = performance.now();
+    const FLY_DUR  = 520;
+
+    function flyTick(now) {
+      const t = Math.min((now - flyStart) / FLY_DUR, 1);
+
+      // Ease-out with gentle overshoot (~3%) so it nudges past the slot then snaps in
+      const c1   = 0.55, c3 = c1 + 1;
+      const ease = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+      const easeC = Math.min(ease, 1); // clamped for scale/rotation (no overshoot there)
+
+      const cy = startY + (endY - startY) * ease;
+
+      // Scale: 1.6 (large off-screen) → 0.70 (matches the token face size)
+      const sc = 1.6 - (1.6 - 0.70) * easeC;
+
+      // Tilt: 0° (flat 2D as it enters) → -38° (matches the camera-facing token face)
+      // This makes the wedge appear to "turn 3D" as it descends to meet the token
+      const rotX = -38 * easeC;
+
+      // Slide-in: in the final 20% push the wedge "into" the slot with a Z-translation
+      const insertZ = easeC > 0.80 ? -28 * ((easeC - 0.80) / 0.20) : 0;
+
+      // Opacity: quick fade-in as it enters screen from above
+      const op = Math.min(t / 0.12, 1);
+
+      // perspective(700px) gives the 3D depth needed for rotateX to look physical
+      wedgeWrap.style.transform =
+        `translate(${startX}px,${cy}px) translate(-50%,-50%) ` +
+        `perspective(700px) scale(${sc}) rotateX(${rotX}deg) translateZ(${insertZ}px)`;
+      wedgeWrap.style.opacity = op;
+
+      if (t < 1) {
+        requestAnimationFrame(flyTick);
+      } else {
+        wedgeWrap.remove();
+        resolve();
+      }
+    }
+    requestAnimationFrame(flyTick);
+  });
 }
 
 window.addEventListener('wedge:allWedgesEarned', () => {
@@ -791,12 +1008,16 @@ window.addEventListener('wedge:allWedgesEarned', () => {
 });
 
 window.addEventListener('wedge:correctAnswer', e => {
-  const { teamIdx, team } = e.detail;
+  const { teamIdx, team, wedgeEarned } = e.detail;
   SFX.correct();
-  tokens.updateWedges(teamIdx, team.wedges);
-  hud.updateActiveTeam(team);
-  hud.updateScoreboard(state.teams, teamIdx);
-  hud.setRollEnabled(true);
+  if (!wedgeEarned) {
+    // Non-wedge correct answers: immediate payoff as before
+    tokens.updateWedges(teamIdx, team.wedges);
+    hud.updateActiveTeam(team);
+    hud.updateScoreboard(state.teams, teamIdx);
+    hud.setRollEnabled(true);
+  }
+  // If wedgeEarned === true, _wedgePuzzleCelebration owns the payoff
 });
 
 window.addEventListener('wedge:missedAnswer', e => {
@@ -834,12 +1055,12 @@ function animate() {
   const dt  = Math.min((now - last) / 1000, 0.05);
   last = now;
 
-  // Pulse the reachable-tile highlights (opacity breathe)
+  // Pulse: emissiveIntensity breathe — border stays visible, never fades out
   if (outlineObjs.length > 0) {
-    _pulseT += dt * 3.5;
-    const opacity = 0.28 + Math.abs(Math.sin(_pulseT)) * 0.38;
-    for (const { outlineMesh } of outlineObjs) {
-      outlineMesh.material.opacity = opacity;
+    _pulseT += dt * 2.5;
+    const ei = 0.60 + Math.abs(Math.sin(_pulseT)) * 0.40;
+    for (const { outlineMat } of outlineObjs) {
+      outlineMat.emissiveIntensity = ei;
     }
   }
 

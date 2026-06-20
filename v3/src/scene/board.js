@@ -15,7 +15,7 @@ const RING_R_OUT  = 7.95;   // outer radius of ring track
 const RING_R_IN   = 6.45;   // inner radius of ring track
 const RING_R_MID  = (RING_R_OUT + RING_R_IN) / 2;  // ≈ 7.20
 const RING_H      = 0.13;   // regular ring tile height
-const RING_HQ_H   = 0.22;   // HQ tile height
+const RING_HQ_H   = 0.40;   // HQ tile height — raised platform so the space itself reads as a prize
 const RING_GROUT  = 0.032;  // total angular grout removed per tile (split ÷2 each side)
 
 const SPOKE_H_RAD = 1.40;   // radial span of each spoke tile
@@ -52,13 +52,14 @@ function mkMat(hex, rough = 0.44, emissive = 0, emissInt = 0, metal = 0.07) {
 function mkTile(hex, isHQ = false) {
   return new THREE.MeshPhysicalMaterial({
     color: hex,
-    roughness:          isHQ ? 0.30 : 0.40,
-    metalness:          0.04,
-    clearcoat:          isHQ ? 0.60 : 0.38,
-    clearcoatRoughness: isHQ ? 0.16 : 0.24,
+    roughness:          isHQ ? 0.24 : 0.40,
+    metalness:          isHQ ? 0.06 : 0.04,
+    clearcoat:          isHQ ? 0.90 : 0.38,
+    clearcoatRoughness: isHQ ? 0.08 : 0.24,
+    // HQ tiles glow from within — the tile itself is the visual event
     emissive:           isHQ ? hex  : 0x000000,
-    emissiveIntensity:  isHQ ? 0.07 : 0,
-    envMapIntensity:    isHQ ? 1.0  : 0.80,
+    emissiveIntensity:  isHQ ? 0.30 : 0,
+    envMapIntensity:    isHQ ? 1.20 : 0.80,
   });
 }
 
@@ -89,7 +90,7 @@ function mkBrass(emissInt = 0) {
 }
 
 // Physical material — HQ gems (glassy, highly emissive)
-function mkGem(hex) {
+function mkGem(hex, emissInt = 0.65) {
   return new THREE.MeshPhysicalMaterial({
     color:              hex,
     roughness:          0.06,
@@ -97,7 +98,7 @@ function mkGem(hex) {
     clearcoat:          1.0,
     clearcoatRoughness: 0.05,
     emissive:           hex,
-    emissiveIntensity:  0.65,
+    emissiveIntensity:  emissInt,
     envMapIntensity:    1.8,
   });
 }
@@ -243,62 +244,100 @@ function makeDomeTop(r, baseH, domeExtra, tex) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Hub: domed medallion with six-colour pie + brass collar + jewel     */
-const HUB_DOME = 0.16;   // extra height of dome peak above cylinder rim
+/* Hub: recessed roulette well with real-geometry 6-colour pie floor   */
+const HUB_PIE_TOP_Y = 0.12;   // top surface of pie floor
+export const HUB_PLACE_R = 0.85;
+export const HUB_TOKEN_Y = 0.23;   // HUB_PIE_TOP_Y + token half-height
+
+/** Sector i is centred on this world angle — lines up exactly with spoke arm i. */
+export function hubWedgeAngle(i) { return i * (Math.PI * 2 / 6); }
 
 function makeHub() {
   const group = new THREE.Group();
 
-  // Shared canvas pie texture
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = 512;
-  const ctx = cv.getContext('2d');
+  // Subtle outer brass lip — low-profile rim so the centre jewel steals the show
+  const wall = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.44, 1.52, 0.32, 80, 1, true),
+    mkBrass(0.05)
+  );
+  wall.position.y = 0.16;
+  wall.castShadow = true;
+  group.add(wall);
+  addTorus(group, 1.47, 0.042, 0.32, mkBrass(0.08), 80);   // thin rim at top
+
+  // Dark base disc — grout gaps between sectors read as dark lines
+  const base = new THREE.Mesh(
+    new THREE.CircleGeometry(1.42, 64),
+    new THREE.MeshPhysicalMaterial({ color: 0x0e0b07, roughness: 0.92, metalness: 0.0 })
+  );
+  base.rotation.x = -Math.PI / 2;
+  base.position.y = 0.008;
+  group.add(base);
+
+  // Six real-geometry colour sectors — wider centre gap for the bigger plinth
+  const rIn = 0.50, rOut = 1.38, grout = 0.022;
   CATEGORIES.forEach((c, i) => {
-    const a0 = (i / 6) * Math.PI * 2 - Math.PI / 2;
-    const a1 = ((i + 1) / 6) * Math.PI * 2 - Math.PI / 2;
-    ctx.beginPath(); ctx.moveTo(256, 256); ctx.arc(256, 256, 256, a0, a1); ctx.closePath();
-    ctx.fillStyle = c.color; ctx.fill();
+    const aC = hubWedgeAngle(i);
+    const aS = aC - Math.PI / 6 + grout;
+    const aE = aC + Math.PI / 6 - grout;
+    const mesh = makeSectorMesh(rIn, rOut, aS, aE, HUB_PIE_TOP_Y,
+      mkTile(parseInt(c.color.slice(1), 16), false));
+    group.add(mesh);
   });
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
-    ctx.beginPath(); ctx.moveTo(256, 256);
-    ctx.lineTo(256 + Math.cos(a) * 256, 256 + Math.sin(a) * 256);
-    ctx.strokeStyle = 'rgba(21,17,13,0.88)'; ctx.lineWidth = 7; ctx.stroke();
-  }
-  ctx.beginPath(); ctx.arc(256, 256, 55, 0, Math.PI * 2);
-  ctx.fillStyle = '#15110D'; ctx.fill();
-  ctx.strokeStyle = '#c9a35b'; ctx.lineWidth = 10; ctx.stroke();
-  const tex = new THREE.CanvasTexture(cv);
 
-  // Cylinder side wall (open — no caps; dome provides the top)
-  const side = new THREE.Mesh(
-    new THREE.CylinderGeometry(HUB_R, HUB_R * 1.02, HUB_H, 64, 1, true),
-    new THREE.MeshPhysicalMaterial({ color: 0x2a2118, roughness: 0.58, metalness: 0.05, clearcoat: 0.2, clearcoatRoughness: 0.4 })
+  // ── Centre monument: 3-tier stepped brass plinth ──────────────────────────
+  // Tier 1 — wide base platform
+  const tier1 = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.46, 0.50, 0.07, 32),
+    mkBrass(0.05)
   );
-  side.position.y = HUB_H / 2;
-  side.castShadow = true;
-  group.add(side);
+  tier1.position.y = 0.035;
+  tier1.castShadow = true;
+  group.add(tier1);
 
-  // Bottom cap
-  const bot = new THREE.Mesh(
-    new THREE.CircleGeometry(HUB_R * 1.02, 64),
-    new THREE.MeshPhysicalMaterial({ color: 0x15110d, roughness: 0.80, metalness: 0.0 })
+  // Tier 2 — mid step
+  const tier2 = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.34, 0.44, 0.06, 32),
+    mkBrass(0.07)
   );
-  bot.rotation.x = -Math.PI / 2;
-  bot.position.y = 0.005;
-  group.add(bot);
+  tier2.position.y = 0.10;
+  tier2.castShadow = true;
+  group.add(tier2);
 
-  // Domed top with pie texture
-  const dome = makeDomeTop(HUB_R, HUB_H, HUB_DOME, tex);
-  dome.castShadow = true;
-  group.add(dome);
+  // Tier 3 — tapered column
+  const column = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.20, 0.33, 0.38, 32),
+    mkBrass(0.09)
+  );
+  column.position.y = 0.35;
+  column.castShadow = true;
+  group.add(column);
 
-  // Centre jewel
+  // Thin brass crown collar where column meets jewel
+  const crown = new THREE.Mesh(
+    new THREE.TorusGeometry(0.24, 0.038, 8, 32),
+    mkBrass(0.12)
+  );
+  crown.rotation.x = Math.PI / 2;
+  crown.position.y = 0.55;
+  group.add(crown);
+
+  // Outer decorative ring at base of column
+  const baseRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.38, 0.030, 8, 48),
+    mkBrass(0.06)
+  );
+  baseRing.rotation.x = Math.PI / 2;
+  baseRing.position.y = 0.16;
+  group.add(baseRing);
+
+  // Large faceted diamond jewel — OctahedronGeometry gives the gem silhouette
   const jewel = new THREE.Mesh(
-    new THREE.SphereGeometry(0.21, 28, 18),
+    new THREE.OctahedronGeometry(0.30, 0),
     mkGem(0xc9a35b)
   );
-  jewel.position.y = HUB_H + HUB_DOME + 0.04;
+  jewel.scale.set(1, 1.40, 1);   // stretch vertically for a diamond shape
+  jewel.position.y = 0.68;
   jewel.castShadow = true;
   group.add(jewel);
 
@@ -389,24 +428,94 @@ export function buildBoard(scene) {
     group.add(tile);
     meshMap.set(`ring_${i}`, tile);
 
-    // HQ decorations — collar ring + category gem
+    // HQ "kingdom" — four brass rampart walls + corner turret pillars + crown gem.
+    // Wall heights rise above the tile so the space reads as a walled fortress.
     if (isHQ) {
       const hex  = CAT_HEX[space.category];
       const wPos = BOARD[`ring_${i}`].worldPos;
+      const px = wPos.x, pz = wPos.z;
 
-      const collar = new THREE.Mesh(
-        new THREE.TorusGeometry(0.68, 0.055, 10, 48),
-        mkBrass()
+      // Layout constants (relative to world y=0)
+      const WALL_H = 0.64;  // rampart top — 0.24 above tile surface (h=0.40)
+      const PIL_H  = 0.86;  // pillar top  — 0.22 above ramparts
+      const PIL_R  = 0.068; // pillar radius
+      const radLen = RING_R_OUT - RING_R_IN;  // 1.50 — span of radial walls
+
+      const wallMat = mkBrass(0.14);
+      const pilMat  = mkBrass(0.22);
+
+      // ── Outer curved rampart (arcs from aS to aE at r = RING_R_OUT) ──────
+      const outerWall = new THREE.Mesh(
+        new THREE.CylinderGeometry(RING_R_OUT + 0.022, RING_R_OUT + 0.022, WALL_H, 8, 1, true, aS, aE - aS),
+        wallMat
       );
-      collar.rotation.x = Math.PI / 2;
-      collar.position.set(wPos.x, h + 0.022, wPos.z);
-      group.add(collar);
+      outerWall.position.y = WALL_H / 2;
+      group.add(outerWall);
 
+      // ── Inner curved rampart ──────────────────────────────────────────────
+      const innerWall = new THREE.Mesh(
+        new THREE.CylinderGeometry(RING_R_IN - 0.022, RING_R_IN - 0.022, WALL_H, 8, 1, true, aS, aE - aS),
+        wallMat
+      );
+      innerWall.position.y = WALL_H / 2;
+      group.add(innerWall);
+
+      // ── Left radial wall (at angle aS, spanning RING_R_IN → RING_R_OUT) ──
+      // BoxGeometry long axis = X; rotation.y = -aS aligns local +X → (cos aS, 0, sin aS)
+      const radWallGeo = new THREE.BoxGeometry(radLen, WALL_H, 0.040);
+
+      const leftWall = new THREE.Mesh(radWallGeo, wallMat);
+      leftWall.position.set(RING_R_MID * Math.cos(aS), WALL_H / 2, RING_R_MID * Math.sin(aS));
+      leftWall.rotation.y = -aS;
+      group.add(leftWall);
+
+      // ── Right radial wall (at angle aE) ──────────────────────────────────
+      const rightWall = new THREE.Mesh(radWallGeo, wallMat);
+      rightWall.position.set(RING_R_MID * Math.cos(aE), WALL_H / 2, RING_R_MID * Math.sin(aE));
+      rightWall.rotation.y = -aE;
+      group.add(rightWall);
+
+      // ── 4 corner turret pillars ───────────────────────────────────────────
+      // Positioned at the 4 corners where radial and arc walls meet
+      const pilGeo = new THREE.CylinderGeometry(PIL_R, PIL_R * 1.14, PIL_H, 14);
+      const capGeo = new THREE.SphereGeometry(PIL_R * 1.20, 10, 8);
+
+      for (const [cr, ca] of [
+        [RING_R_OUT, aS], [RING_R_OUT, aE],
+        [RING_R_IN,  aS], [RING_R_IN,  aE],
+      ]) {
+        const cx = cr * Math.cos(ca), cz = cr * Math.sin(ca);
+
+        const pillar = new THREE.Mesh(pilGeo, pilMat);
+        pillar.position.set(cx, PIL_H / 2, cz);
+        pillar.castShadow = true;
+        group.add(pillar);
+
+        // Ball finial on each pillar
+        const cap = new THREE.Mesh(capGeo, pilMat);
+        cap.position.set(cx, PIL_H + PIL_R * 1.18, cz);
+        group.add(cap);
+      }
+
+      // ── Crown halo ring at gem equator ────────────────────────────────────
+      const halo = new THREE.Mesh(
+        new THREE.TorusGeometry(0.34, 0.024, 8, 48),
+        mkBrass(0.24)
+      );
+      halo.rotation.x = Math.PI / 2;
+      halo.position.set(px, h + 0.46, pz);  // gem equator = h + gem half-height
+      group.add(halo);
+
+      // ── Central gem — tall diamond rising above the ramparts ─────────────
+      // OctahedronGeometry(0.30) scale.y=1.55 → half-height 0.465
+      // center at h+0.465=0.865, apex at h+0.93=1.33 — towers over pillars
       const gem = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.14, 0.14, 0.15, 6),
-        mkGem(hex)
+        new THREE.OctahedronGeometry(0.30, 0),
+        mkGem(hex, 1.20)
       );
-      gem.position.set(wPos.x, h + 0.12, wPos.z);
+      gem.scale.set(1, 1.55, 1);
+      gem.position.set(px, h + 0.465, pz);
+      gem.castShadow = true;
       group.add(gem);
     }
 
@@ -432,14 +541,11 @@ export function buildBoard(scene) {
 
   /* ---- Hub ---- */
   const hub = makeHub();
-  hub.position.set(0, 0, 0);   // internal group positions own children
+  hub.position.set(0, 0, 0);
   group.add(hub);
   meshMap.set('hub', hub);
   hub.userData.isHub   = true;
-  hub.userData.hubTopY = HUB_H + HUB_DOME;
-
-  // Brass collar ring around hub
-  addTorus(group, HUB_R + 0.09, 0.075, HUB_H + 0.015, mkBrass(0.05), 48);
+  hub.userData.hubTopY = 0.32;   // top of new brass lip
 
   scene.add(group);
   return { meshMap, group };

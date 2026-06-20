@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CATEGORIES } from '../data/loadQuestions.js';
 import { BOARD, STARTING_SPACE } from '../game/boardGraph.js';
+import { hubWedgeAngle, HUB_PLACE_R, HUB_TOKEN_Y } from './board.js';
 
 const TOKEN_RADIUS = 0.28;
 const TOKEN_HEIGHT = 0.22;
@@ -42,10 +43,14 @@ export class TokenManager {
     }
     for (let i = 0; i < numTeams; i++) {
       const startId = STARTING_SPACE;
-      const sp      = BOARD[startId]?.worldPos ?? { x: 0, z: 0 };
       const outer   = new THREE.Group();
       outer.add(this._buildPie(i, new Set()));
-      outer.position.set(sp.x, TOKEN_Y, sp.z);
+      const startAngle = hubWedgeAngle(i);
+      outer.position.set(
+        Math.cos(startAngle) * HUB_PLACE_R,
+        HUB_TOKEN_Y,
+        Math.sin(startAngle) * HUB_PLACE_R
+      );
       this.scene.add(outer);
       this.tokens.push({
         outer,
@@ -55,6 +60,8 @@ export class TokenManager {
         _hovering:   false,
         _hoverPhase: 0,
         _flying:     false,
+        _onStage:    false,
+        _scaleOverride: null,
         _scaleY:     1, _scaleXZ:    1,
         _scaleYVel:  0, _scaleXZVel: 0,
       });
@@ -71,6 +78,109 @@ export class TokenManager {
     tok.pie.traverse(o => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
     tok.pie = this._buildPie(teamIdx, wedges);
     tok.outer.add(tok.pie);
+  }
+
+  getTokenWorldPos(teamIdx) {
+    return this.tokens[teamIdx]?.outer.position.clone() ?? new THREE.Vector3();
+  }
+
+  popToken(teamIdx) {
+    const tok = this.tokens[teamIdx];
+    if (!tok) return;
+    tok._scaleY    = 1.35; tok._scaleXZ    = 0.80;
+    tok._scaleYVel = 0;    tok._scaleXZVel = 0;
+  }
+
+  // Lift a token to an arbitrary world position and scale it up (for center-stage reveal)
+  // faceQuat: optional Quaternion for the token to tilt to (face toward camera)
+  liftToStage(teamIdx, stagePos, targetScale = 3.0, dur = 0.68, faceQuat = null) {
+    const tok = this.tokens[teamIdx];
+    if (!tok) return Promise.resolve();
+    tok._hovering = false;
+    tok._hoverSeq = (tok._hoverSeq || 0) + 1;
+    tok._onStage  = true;
+
+    const { x: tx, y: ty, z: tz } = stagePos;
+
+    // Spring state for position — ω₀=10 rad/s, ζ=0.72
+    let px = tok.outer.position.x, py = tok.outer.position.y, pz = tok.outer.position.z;
+    let vx = 0, vy = 0, vz = 0;
+    const kP = 100, dP = 14.4;
+
+    // Spring state for scale — ω₀=9 rad/s, ζ=0.78 (grows into position slightly slower)
+    let sc = 1.0, sv = 0;
+    const kS = 81, dS = 14.04;
+
+    // Quaternion for face-toward-camera tilt
+    const startQuat = tok.outer.quaternion.clone();
+    const endQuat   = faceQuat ?? new THREE.Quaternion();
+
+    return new Promise(resolve => {
+      let elapsed = 0;
+      const tick = dt => {
+        elapsed += dt;
+
+        vx += (-kP * (px - tx) - dP * vx) * dt;
+        vy += (-kP * (py - ty) - dP * vy) * dt;
+        vz += (-kP * (pz - tz) - dP * vz) * dt;
+        px += vx * dt; py += vy * dt; pz += vz * dt;
+
+        sv += (-kS * (sc - targetScale) - dS * sv) * dt;
+        sc += sv * dt;
+
+        tok.outer.position.set(px, py, pz);
+        tok._scaleOverride = Math.max(0.01, sc);
+
+        // Tilt to face the camera — ease-out quad so it arrives looking right
+        const rotT    = Math.min(elapsed / dur, 1);
+        const rotEase = 1 - (1 - rotT) * (1 - rotT);
+        tok.outer.quaternion.slerpQuaternions(startQuat, endQuat, rotEase);
+
+        if (elapsed >= dur) {
+          tok.outer.position.set(tx, ty, tz);
+          tok._scaleOverride = targetScale;
+          tok.outer.quaternion.copy(endQuat);
+          this._remove(tick);
+          resolve();
+        }
+      };
+      this._tickers.push(tick);
+    });
+  }
+
+  // Return token to its board position; clears _scaleOverride so the spring resumes
+  dropToBoard(teamIdx, targetPos, dur = 0.56) {
+    const tok = this.tokens[teamIdx];
+    if (!tok) return Promise.resolve();
+    tok._scaleOverride = null;
+    const sx = tok.outer.position.x, sy = tok.outer.position.y, sz = tok.outer.position.z;
+    const { x: tx, y: ty, z: tz } = targetPos;
+    // Capture the current (camera-facing) rotation so we can slerp back to upright
+    const startQuat = tok.outer.quaternion.clone();
+    const uprightQuat = new THREE.Quaternion(); // identity = upright
+    return new Promise(resolve => {
+      let elapsed = 0;
+      const tick = dt => {
+        elapsed += dt;
+        const t  = Math.min(elapsed / dur, 1);
+        // Ease-in-out quart: lingers briefly at top (post-impact), accelerates home
+        const t2 = t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
+        tok.outer.position.x = sx + (tx - sx) * t2;
+        tok.outer.position.y = sy + (ty - sy) * t2;
+        tok.outer.position.z = sz + (tz - sz) * t2;
+        // Tilt back to upright in sync with the descent
+        tok.outer.quaternion.slerpQuaternions(startQuat, uprightQuat, t2);
+        if (t >= 1) {
+          tok.outer.position.set(tx, ty, tz);
+          tok.outer.quaternion.identity();
+          tok._onStage = false;
+          this._remove(tick);
+          this._updateFans(tok.spaceId);
+          resolve();
+        }
+      };
+      this._tickers.push(tick);
+    });
   }
 
   hover(teamIdx) {
@@ -106,7 +216,11 @@ export class TokenManager {
 
     const departId = tok.spaceId;
     const sx = tok.outer.position.x, sz = tok.outer.position.z, sy = tok.outer.position.y;
-    const tx = dest.x, tz = dest.z;
+    const isHub = destId === STARTING_SPACE;
+    const hubAngle = isHub ? hubWedgeAngle(tok.teamIdx) : 0;
+    const tx = isHub ? Math.cos(hubAngle) * HUB_PLACE_R : dest.x;
+    const tz = isHub ? Math.sin(hubAngle) * HUB_PLACE_R : dest.z;
+    const destY = isHub ? HUB_TOKEN_Y : TOKEN_Y;
     const dist     = Math.sqrt((tx - sx) ** 2 + (tz - sz) ** 2);
     const duration = 0.18 + dist * 0.055;
 
@@ -121,7 +235,7 @@ export class TokenManager {
         const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
         tok.outer.position.x = sx + (tx - sx) * ease;
         tok.outer.position.z = sz + (tz - sz) * ease;
-        tok.outer.position.y = sy + (TOKEN_Y - sy) * ease + Math.sin(t * Math.PI) * arcH;
+        tok.outer.position.y = sy + (destY - sy) * ease + Math.sin(t * Math.PI) * arcH;
 
         if (t > 0.82) {
           const lt = (t - 0.82) / 0.18;
@@ -130,7 +244,7 @@ export class TokenManager {
         }
 
         if (t >= 1) {
-          tok.outer.position.set(tx, TOKEN_Y, tz);
+          tok.outer.position.set(tx, destY, tz);
           tok.spaceId = destId;
           tok._flying = false;
           tok._scaleY = 0.74; tok._scaleXZ = 1.20;
@@ -151,6 +265,7 @@ export class TokenManager {
     const origin = tok.outer.position.clone();
     origin.y += TOKEN_HEIGHT / 2 + 0.15;
 
+    // 3 expanding torus rings
     for (let ri = 0; ri < 3; ri++) {
       const delay = ri * 0.13;
       const mat   = new THREE.MeshBasicMaterial({
@@ -178,6 +293,66 @@ export class TokenManager {
       };
       this._tickers.push(tick);
     }
+
+    // ~14 radial spark shards
+    const SPARK_COUNT = 14;
+    for (let si = 0; si < SPARK_COUNT; si++) {
+      const geo  = new THREE.TetrahedronGeometry(0.06);
+      const smat = new THREE.MeshBasicMaterial({ color: catHex, transparent: true, opacity: 1, depthWrite: false });
+      const spark = new THREE.Mesh(geo, smat);
+      spark.position.copy(origin);
+      this.scene.add(spark);
+
+      const angle = (si / SPARK_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
+      const speed = 1.8 + Math.random() * 1.4;
+      const vx = Math.cos(angle) * speed;
+      const vz = Math.sin(angle) * speed;
+      const vy = 1.4 + Math.random() * 1.8;
+      let px = origin.x, py = origin.y, pz = origin.z, st = 0;
+
+      const stk = dt => {
+        st += dt;
+        px += vx * dt;
+        py += (vy - 4.5 * st) * dt;
+        pz += vz * dt;
+        spark.position.set(px, py, pz);
+        spark.rotation.x += dt * 4;
+        spark.rotation.y += dt * 3;
+        smat.opacity = Math.max(0, 1 - st / 0.55);
+        if (st >= 0.55) {
+          this.scene.remove(spark);
+          geo.dispose(); smat.dispose();
+          this._remove(stk);
+        }
+      };
+      this._tickers.push(stk);
+    }
+
+    // Light column: thin tall cone that scales up and fades
+    {
+      const colGeo = new THREE.CylinderGeometry(0.04, 0.28, 3.5, 12);
+      const colMat = new THREE.MeshBasicMaterial({ color: catHex, transparent: true, opacity: 0.72, depthWrite: false });
+      const col    = new THREE.Mesh(colGeo, colMat);
+      col.position.copy(tok.outer.position);
+      col.position.y += 1.75;
+      this.scene.add(col);
+
+      let ct = 0;
+      const ctk = dt => {
+        ct += dt;
+        const p = Math.min(ct / 0.40, 1);
+        col.scale.setScalar(0.2 + p * 0.8);
+        colMat.opacity = 0.72 * (1 - p);
+        if (ct >= 0.40) {
+          this.scene.remove(col);
+          colGeo.dispose(); colMat.dispose();
+          this._remove(ctk);
+        }
+      };
+      this._tickers.push(ctk);
+    }
+
+    this.popToken(teamIdx);
   }
 
   update(dt) {
@@ -192,7 +367,11 @@ export class TokenManager {
       tok._scaleXZVel  += (-k * (tok._scaleXZ - 1) - d * tok._scaleXZVel) * dt;
       tok._scaleY      += tok._scaleYVel  * dt;
       tok._scaleXZ     += tok._scaleXZVel * dt;
-      tok.outer.scale.set(tok._scaleXZ, tok._scaleY, tok._scaleXZ);
+      if (tok._scaleOverride != null) {
+        tok.outer.scale.setScalar(tok._scaleOverride);
+      } else {
+        tok.outer.scale.set(tok._scaleXZ, tok._scaleY, tok._scaleXZ);
+      }
     }
   }
 
@@ -200,10 +379,21 @@ export class TokenManager {
 
   _updateFans(spaceId) {
     const group = this.tokens
-      .filter(t => t.spaceId === spaceId && !t._flying)
+      .filter(t => t.spaceId === spaceId && !t._flying && !t._onStage)
       .sort((a, b) => a.teamIdx - b.teamIdx);
     const dest = BOARD[spaceId]?.worldPos;
     if (!dest) return;
+
+    if (spaceId === STARTING_SPACE) {
+      // Seat each token on its category colour slice inside the hub well
+      group.forEach(tok => {
+        const angle = hubWedgeAngle(tok.teamIdx);
+        this._tweenXZ(tok, Math.cos(angle) * HUB_PLACE_R, Math.sin(angle) * HUB_PLACE_R, 0.26);
+        tok.outer.position.y = HUB_TOKEN_Y;
+      });
+      return;
+    }
+
     const offs = fanOffsets(group.length);
     group.forEach((tok, i) => {
       this._tweenXZ(tok, dest.x + offs[i][0], dest.z + offs[i][1], 0.26);

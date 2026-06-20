@@ -49,7 +49,10 @@ function shuffle(arr) {
  */
 function parseSheet(workbook, sheetName) {
   const ws = workbook.Sheets[sheetName];
-  if (!ws) throw new Error(`Sheet "${sheetName}" not found`);
+  if (!ws) {
+    const available = workbook.SheetNames.join(', ');
+    throw new Error(`Sheet "${sheetName}" not found. Available sheets: [${available}]`);
+  }
 
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
@@ -105,7 +108,14 @@ export async function loadQuestions() {
 
   const editions = {};
   for (const [sheetName, editionLabel] of Object.entries(SHEET_TO_EDITION)) {
-    editions[editionLabel] = parseSheet(wb, sheetName);
+    try {
+      editions[editionLabel] = parseSheet(wb, sheetName);
+    } catch (e) {
+      console.warn(`[questions] Skipping edition "${editionLabel}": ${e.message}`);
+    }
+  }
+  if (Object.keys(editions).length === 0) {
+    throw new Error(`No sheets matched. File has: [${wb.SheetNames.join(', ')}]. Expected: [${Object.keys(SHEET_TO_EDITION).join(', ')}]`);
   }
 
   // Sanity-check log — counts per edition × category
